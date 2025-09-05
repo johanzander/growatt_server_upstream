@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -13,12 +16,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
           body: |
             ## Installation
             - Install via HACS using this repository URL
@@ -27,5 +26,3 @@ jobs:
             
             ## Requirements
             - growattServer==1.7.1
-          draft: false
-          prerelease: false
