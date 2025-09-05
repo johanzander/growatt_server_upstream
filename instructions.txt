@@ -1,0 +1,251 @@
+TASK: Create clean upstream Growatt Server custom component for HACS distribution
+Goal: Create a base custom component repository that mirrors the latest Home Assistant Core Growatt Server integration, properly structured for HACS installation.
+Repository Structure to Create:
+growatt_server_upstream/
+├── custom_components/
+│   └── growatt_server/
+│       ├── __init__.py
+│       ├── const.py
+│       ├── coordinator.py
+│       ├── sensor.py
+│       ├── config_flow.py
+│       ├── models.py
+│       ├── manifest.json
+│       ├── strings.json
+│       └── translations/
+│           └── en.json
+├── README.md
+├── DELTA.md
+├── CONTRIBUTING.md
+├── info.md
+├── hacs.json
+└── .github/
+    └── workflows/
+        └── release.yml
+Step 1: Create the core component files
+Extract the current Growatt Server integration files from Home Assistant Core repository (https://github.com/home-assistant/core/tree/dev/homeassistant/components/growatt_server) and copy them to custom_components/growatt_server/:
+Files to copy exactly as-is:
+
+__init__.py
+const.py
+coordinator.py
+sensor.py
+config_flow.py
+models.py
+strings.json
+translations/en.json (and any other translation files)
+
+Step 2: Create manifest.json
+Create custom_components/growatt_server/manifest.json:
+json{
+  "domain": "growatt_server",
+  "name": "Growatt Server Upstream",
+  "codeowners": ["@johanzander"],
+  "config_flow": true,
+  "documentation": "https://github.com/johanzander/growatt_server_upstream",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/johanzander/growatt_server_upstream/issues",
+  "loggers": ["growattServer"],
+  "requirements": ["growattServer==1.7.1"],
+  "version": "1.0.0"
+}
+Step 3: Create HACS configuration
+Create hacs.json in repository root:
+json{
+  "name": "Growatt Server Upstream",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["growatt_server"]
+}
+Step 4: Create info.md
+Create info.md in repository root:
+markdown# Growatt Server Upstream
+
+Upstream development version of the Growatt Server integration for Home Assistant.
+
+## What is this?
+
+This repository serves as an upstream testing ground for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
+
+## Current Status
+
+**Base Version**: Latest Home Assistant Core Growatt Server integration  
+**Enhancements**: Additional improvements will be added incrementally
+
+## Installation
+
+1. Add this repository as a custom repository in HACS
+2. Install "Growatt Server Upstream"  
+3. Restart Home Assistant
+4. Configure via Settings → Devices & Services
+
+**Important**: This uses the same domain as the core component. Remove/disable the standard Growatt Server integration first.
+Step 5: Create README.md
+Create README.md in repository root:
+markdown# Growatt Server Upstream
+
+[![GitHub Release][releases-shield]][releases]
+[![hacs][hacsbadge]][hacs]
+
+Upstream development version of the Growatt Server integration for Home Assistant.
+
+## About
+
+This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
+
+## Features
+
+- 🔄 **Latest Core Features**: Based on latest Home Assistant Core
+- 🧪 **Early Access**: Test upcoming improvements before official release
+- 🐛 **Bug Fixes**: Get fixes faster than waiting for HA releases
+- 🛡️ **Stability**: Additional error handling and reliability improvements
+
+## Installation
+
+### HACS (Recommended)
+
+1. Open HACS in Home Assistant
+2. Go to "Integrations" 
+3. Click the 3-dot menu → "Custom repositories"
+4. Add repository URL: `https://github.com/johanzander/growatt_server_upstream`
+5. Select category: "Integration"
+6. Click "Install"
+7. Restart Home Assistant
+
+### Manual Installation
+
+1. Download the `custom_components` folder
+2. Copy to your Home Assistant `config/custom_components/` directory
+3. Restart Home Assistant
+
+## Configuration
+
+Configure exactly like the standard Growatt Server integration:
+
+1. Go to Settings → Devices & Services
+2. Click "Add Integration" 
+3. Search for "Growatt Server"
+4. Follow the configuration steps
+
+**Note**: Remove or disable the core Growatt Server integration first to avoid conflicts.
+
+## Support
+
+- 🐛 **Issues**: [GitHub Issues][issues]
+- 📖 **Documentation**: [Home Assistant Docs](https://www.home-assistant.io/integrations/growatt_server/)
+
+## Contributing
+
+Contributions are welcome! All contributions will be considered for submission back to Home Assistant Core.
+
+---
+
+[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
+[hacs]: https://github.com/hacs/integration
+[issues]: https://github.com/johanzander/growatt_server_upstream/issues
+[releases-shield]: https://img.shields.io/github/release/johanzander/growatt_server_upstream.svg
+[releases]: https://github.com/johanzander/growatt_server_upstream/releases
+Step 6: Create DELTA.md
+Create DELTA.md in repository root:
+markdown# Delta from Home Assistant Core
+
+This document tracks differences between this upstream version and the core `growatt_server` component.
+
+## Current Status (v1.0.0)
+
+**Base Version**: Latest Home Assistant Core Growatt Server integration  
+**Core Compatibility**: 100% compatible  
+**Changes**: Baseline version ready for enhancements
+
+## Core Component Files
+
+All component files are identical to Home Assistant Core except:
+- `manifest.json` - Updated for custom component distribution
+
+## Future Enhancements
+
+Planned improvements that will be added incrementally:
+- API throttling protection
+- Enhanced error handling  
+- Performance optimizations
+- Additional device support
+
+## Sync Status
+
+**Source**: Latest Home Assistant Core dev branch  
+**Requirements**: growattServer==1.7.1  
+**Sync Method**: Manual file copy
+Step 7: Create CONTRIBUTING.md
+Create CONTRIBUTING.md in repository root:
+markdown# Contributing to Growatt Server Upstream
+
+## Repository Purpose
+
+This repository serves as an upstream testing ground for improvements to the Growatt Server integration before submission to Home Assistant Core.
+
+## Adding Enhancements
+
+1. Create feature branch
+2. Implement changes
+3. Update `DELTA.md` with modifications
+4. Test thoroughly
+5. Submit PR
+
+## Release Process
+
+1. Update version in `manifest.json`
+2. Update `DELTA.md` with changes
+3. Create git tag: `git tag v1.1.0`
+4. Push tag: `git push origin v1.1.0`
+5. GitHub Actions creates release automatically
+
+## Sync with Core
+
+Regular sync with Home Assistant Core dev branch to incorporate latest changes.
+
+## Testing Guidelines
+
+- Test with multiple Growatt account types
+- Verify all device types work
+- Check configuration flow
+- Test unload/reload functionality
+- Verify HACS installation process
+Step 8: Create GitHub workflow
+Create .github/workflows/release.yml:
+yamlname: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            ## Installation
+            - Install via HACS using this repository URL
+            - Remove/disable standard Growatt Server integration first
+            - Restart Home Assistant after installation
+            
+            ## Requirements
+            - growattServer==1.7.1
+          draft: false
+          prerelease: false
+Final Steps:
+
+Commit all files to repository
+Create initial tag: git tag v1.0.0
+Push tag to trigger release workflow
+Verify HACS installation works
