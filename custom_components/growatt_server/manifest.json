@@ -1,0 +1,12 @@
+{
+  "domain": "growatt_server",
+  "name": "Growatt Server Upstream",
+  "codeowners": ["@johanzander"],
+  "config_flow": true,
+  "documentation": "https://github.com/johanzander/growatt_server_upstream",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/johanzander/growatt_server_upstream/issues",
+  "loggers": ["growattServer"],
+  "requirements": ["growattServer==1.7.1"],
+  "version": "1.0.0"
+}

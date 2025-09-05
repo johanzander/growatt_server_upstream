@@ -1,0 +1,6 @@
+{
+  "name": "Growatt Server Upstream",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["growatt_server"]
+}
