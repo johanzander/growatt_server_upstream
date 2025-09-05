@@ -9,20 +9,18 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features
+## Features (v1.0.0)
 
-- = **Latest Core Features**: Based on latest Home Assistant Core
-- >Í **Early Access**: Test upcoming improvements before official release
-- = **Bug Fixes**: Get fixes faster than waiting for HA releases
-- =· **Stability**: Additional error handling and reliability improvements
+**Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration  
+**Changes**: Only `manifest.json` updated for custom component distribution
 
 ## Installation
 
 ### HACS (Recommended)
 
 1. Open HACS in Home Assistant
-2. Go to "Integrations" 
-3. Click the 3-dot menu í "Custom repositories"
+2. Go to "Integrations"
+3. Click the 3-dot menu ‚Üí "Custom repositories"
 4. Add repository URL: `https://github.com/johanzander/growatt_server_upstream`
 5. Select category: "Integration"
 6. Click "Install"
@@ -38,21 +36,21 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 Configure exactly like the standard Growatt Server integration:
 
-1. Go to Settings í Devices & Services
-2. Click "Add Integration" 
+1. Go to Settings ‚Üí Devices & Services
+2. Click "Add Integration"
 3. Search for "Growatt Server"
 4. Follow the configuration steps
 
 **Note**: Remove or disable the core Growatt Server integration first to avoid conflicts.
 
-## Support
-
-- = **Issues**: [GitHub Issues][issues]
-- =÷ **Documentation**: [Home Assistant Docs](https://www.home-assistant.io/integrations/growatt_server/)
-
 ## Contributing
 
-Contributions are welcome! All contributions will be considered for submission back to Home Assistant Core.
+Contributions welcome! Create feature branch, implement changes, test thoroughly, submit PR. All contributions considered for submission back to Home Assistant Core.
+
+## Support
+
+- üêõ **Issues**: [GitHub Issues][issues]
+- üìñ **Documentation**: [Home Assistant Docs](https://www.home-assistant.io/integrations/growatt_server/)
 
 ---
 
