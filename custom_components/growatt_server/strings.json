@@ -5,7 +5,8 @@
       "no_plants": "No plants have been found on this account"
     },
     "error": {
-      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]"
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
     },
     "step": {
       "plant": {
@@ -16,12 +17,25 @@
       },
       "user": {
         "data": {
-          "name": "[%key:common::config_flow::data::name%]",
-          "password": "[%key:common::config_flow::data::password%]",
+          "auth_type": "Authentication method"
+        },
+        "title": "Choose authentication method"
+      },
+      "password_auth": {
+        "data": {
           "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]",
           "url": "[%key:common::config_flow::data::url%]"
         },
-        "title": "Enter your Growatt information"
+        "title": "Username/Password Authentication",
+        "description": "Use your Growatt account username and password. Supports all device types."
+      },
+      "token_auth": {
+        "data": {
+          "api_key": "API Key"
+        },
+        "title": "API Token Authentication",
+        "description": "Use an API token from your Growatt account (Settings → Account Management → API Key). Currently supports MIN devices only. More device types may be added in the future."
       }
     }
   },

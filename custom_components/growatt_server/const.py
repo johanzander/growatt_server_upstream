@@ -8,6 +8,13 @@ DEFAULT_PLANT_ID = "0"
 
 DEFAULT_NAME = "Growatt"
 
+# Authentication types
+AUTH_PASSWORD = "password"
+AUTH_API_TOKEN = "api_token"
+CONF_AUTH_TYPE = "auth_type"
+CONF_API_KEY = "api_key"
+DEFAULT_AUTH_TYPE = AUTH_PASSWORD
+
 SERVER_URLS = [
     "https://openapi.growatt.com/",  # Other regional server
     "https://openapi-cn.growatt.com/",  # Chinese server

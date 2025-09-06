@@ -12,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.components import persistent_notification
 
 from .const import (
+    CONF_API_KEY,
     CONF_PLANT_ID,
     DEFAULT_PLANT_ID,
     DEFAULT_URL,
@@ -143,7 +144,7 @@ async def async_setup_entry(
     # Determine API version
     if config.get("auth_type") == "api_token":
         api_version = "v1"
-        token = config["token"]
+        token = config[CONF_API_KEY]
         api = growattServer.OpenApiV1(token=token)
         _LOGGER.debug("Using Open API V1 with token authentication")
     elif config.get("auth_type") == "password":

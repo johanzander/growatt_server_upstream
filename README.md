@@ -9,15 +9,16 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features (v1.1.1)
+## Features (v1.3.0)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration  
 
 **Changes from Base Version**:
 
 1. `manifest.json` updated for custom component distribution
-2. [Improved error handling during login][pr-151025]
-3. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
+2. [API Token authentication support][pr-149783] - Official V1 API for MIN devices
+3. [Improved error handling during login][pr-151025]
+4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
 
 ## Installation
 
@@ -64,5 +65,6 @@ Contributions welcome! Create feature branch, implement changes, test thoroughly
 [issues]: https://github.com/johanzander/growatt_server_upstream/issues
 [releases-shield]: https://img.shields.io/github/release/johanzander/growatt_server_upstream.svg
 [releases]: https://github.com/johanzander/growatt_server_upstream/releases
+[pr-149783]: https://github.com/home-assistant/core/pull/149783
 [pr-151025]: https://github.com/home-assistant/core/pull/151025
 [issue-150732]: https://github.com/home-assistant/core/issues/150732
