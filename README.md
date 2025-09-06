@@ -22,6 +22,8 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 ## Installation
 
+**Note**: Remove the core Growatt Server integration first to avoid conflicts.
+
 ### HACS (Recommended)
 
 #### Step 1: Add Custom Repository
@@ -40,7 +42,7 @@ This repository serves as an **upstream testing ground** for improvements to the
 #### Step 3: Configure the Integration
 10. Go to Settings → Devices & Services
 11. Click "Add Integration"
-12. Search for "Growatt Server"
+12. Search for "Growatt Server Upstream"
 13. Follow the configuration steps
 
 ### Manual Installation
@@ -48,17 +50,6 @@ This repository serves as an **upstream testing ground** for improvements to the
 1. Download the `custom_components` folder
 2. Copy to your Home Assistant `config/custom_components/` directory
 3. Restart Home Assistant
-
-## Configuration
-
-Configure exactly like the standard Growatt Server integration:
-
-1. Go to Settings → Devices & Services
-2. Click "Add Integration"
-3. Search for "Growatt Server"
-4. Follow the configuration steps
-
-**Note**: Remove or disable the core Growatt Server integration first to avoid conflicts.
 
 ## Contributing
 
