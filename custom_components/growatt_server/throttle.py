@@ -38,27 +38,31 @@ class ApiThrottleManager:
         self._data: dict[str, str] = {}
         self._loaded = False
 
-    async def _async_load(self) -> None:
+    async def async_load(self) -> None:
         """Load the throttle data from storage."""
         if not self._loaded:
             data = await self._store.async_load()
             self._data = data or {}
             self._loaded = True
 
-    async def _should_throttle(self, func_name: str) -> bool:
+    async def should_throttle(self, func_name: str) -> bool:
         """Check if an API call should be throttled."""
-        await self._async_load()
+        await self.async_load()
 
         # Fast path: if no previous call recorded, allow immediately
         if func_name not in self._data:
-            _LOGGER.debug("No previous call recorded for %s, allowing immediately", func_name)
+            _LOGGER.debug(
+                "No previous call recorded for %s, allowing immediately", func_name
+            )
             return False
 
         last_call_str = self._data[func_name]
         try:
             last_call = dt_util.parse_datetime(last_call_str)
             if last_call is None:
-                _LOGGER.debug("Could not parse last call time for %s, allowing call", func_name)
+                _LOGGER.debug(
+                    "Could not parse last call time for %s, allowing call", func_name
+                )
                 return False
 
             # Optimization: use total_seconds() to avoid object creation
@@ -71,28 +75,40 @@ class ApiThrottleManager:
                 remaining_minutes = remaining_seconds / 60
                 _LOGGER.warning(
                     "THROTTLING ACTIVE for %s - last call was %.1f minutes ago, need to wait %.1f more minutes",
-                    func_name, time_since_seconds / 60, remaining_minutes
+                    func_name,
+                    time_since_seconds / 60,
+                    remaining_minutes,
                 )
                 return True
-            else:
-                _LOGGER.debug(
-                    "Allowing %s - last call was %.1f minutes ago (> %d minute threshold)",
-                    func_name, time_since_seconds / 60, API_THROTTLE_MINUTES
-                )
-                return False
+            _LOGGER.debug(
+                "Allowing %s - last call was %.1f minutes ago (> %d minute threshold)",
+                func_name,
+                time_since_seconds / 60,
+                API_THROTTLE_MINUTES,
+            )
         except (ValueError, TypeError) as e:
             # If we can't parse the timestamp, allow the call (fail-safe)
-            _LOGGER.warning("Could not parse timestamp for %s (%s), allowing call (fail-safe)", func_name, e)
-            return False
+            _LOGGER.warning(
+                "Could not parse timestamp for %s (%s), allowing call (fail-safe)",
+                func_name,
+                e,
+            )
 
-    async def _record_api_call(self, func_name: str) -> None:
+        return False
+
+    async def get_throttle_data(self) -> dict[str, str]:
+        """Get the current throttle data."""
+        await self.async_load()
+        return self._data.copy()
+
+    async def record_api_call(self, func_name: str) -> None:
         """Record that an API call was made."""
-        await self._async_load()
+        await self.async_load()
 
         current_time = dt_util.utcnow().isoformat()
         self._data[func_name] = current_time
         _LOGGER.debug("Recording API call for %s at %s", func_name, current_time)
-        await self._store.async_delay_save(self._data.copy(), delay=1)
+        self._store.async_delay_save(self._data.copy, delay=1)
 
     async def throttled_call(self, func, *args, **kwargs) -> Any:
         """Execute a function call with throttling protection.
@@ -109,17 +125,17 @@ class ApiThrottleManager:
         _LOGGER.debug("Attempting throttled call to %s", func_name)
 
         # Check if we should throttle based on function name
-        if await self._should_throttle(func_name):
+        if await self.should_throttle(func_name):
             _LOGGER.warning(
                 "Throttling %s - Home Assistant will automatically retry in a few minutes",
-                func_name
+                func_name,
             )
             raise ConfigEntryNotReady(
                 f"API calls to {func_name} rate-limited to prevent account lock-out. Home Assistant will automatically retry when the cooldown period expires. Just hold on"
             )
 
         # Record this API call attempt
-        await self._record_api_call(func_name)
+        await self.record_api_call(func_name)
         _LOGGER.debug("Executing %s (not throttled)", func_name)
 
         # Execute the function - use executor for sync functions
@@ -128,11 +144,12 @@ class ApiThrottleManager:
                 result = await func(*args, **kwargs)
             else:
                 result = await self.hass.async_add_executor_job(func, *args, **kwargs)
-            _LOGGER.debug("Successfully completed %s", func_name)
-            return result
         except Exception as e:
             _LOGGER.error("Error executing %s: %s", func_name, e)
             raise
+
+        _LOGGER.debug("Successfully completed %s", func_name)
+        return result
 
 
 def init_throttle_manager(hass: HomeAssistant) -> ApiThrottleManager:
