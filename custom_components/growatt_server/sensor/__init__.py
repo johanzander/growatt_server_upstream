@@ -121,3 +121,8 @@ class GrowattSensor(CoordinatorEntity[GrowattCoordinator], SensorEntity):
         if self.entity_description.currency:
             return self.coordinator.get_currency()
         return super().native_unit_of_measurement
+
+    @property
+    def translation_key(self) -> str | None:
+        """Return the translation key to translate the entity's name."""
+        return self.entity_description.translation_key
