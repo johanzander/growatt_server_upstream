@@ -1,0 +1,215 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Device is already configured",
+      "no_plants": "No plants have been found on this account"
+    },
+    "error": {
+      "invalid_auth": "Authentication failed. Please check your credentials and try again."
+    },
+    "step": {
+      "user": {
+        "title": "Choose authentication method",
+        "description": "Note: API Token authentication is currently only supported for MIN/TLX devices. For other device types, please use Username & Password authentication.",
+        "menu_options": {
+          "password_auth": "Username & Password",
+          "token_auth": "API Token (MIN/TLX only)"
+        }
+      },
+      "password_auth": {
+        "title": "Enter your Growatt login credentials",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "url": "URL"
+        }
+      },
+      "token_auth": {
+        "title": "Enter your API token",
+        "description": "Token authentication is only supported for MIN/TLX devices. For other device types, please use username/password authentication.",
+        "data": {
+          "token": "API Token"
+        }
+      },
+      "plant": {
+        "data": {
+          "plant_id": "Plant"
+        },
+        "title": "Select your plant"
+      }
+    }
+  },
+  "title": "Growatt Server",
+  "entity": {
+    "sensor": {
+      "inverter_energy_today": {
+        "name": "Energy today"
+      },
+      "inverter_energy_total": {
+        "name": "Lifetime energy output"
+      },
+      "inverter_voltage_input_1": {
+        "name": "Input 1 voltage"
+      },
+      "inverter_amperage_input_1": {
+        "name": "Input 1 amperage"
+      },
+      "inverter_wattage_input_1": {
+        "name": "Input 1 wattage"
+      },
+      "inverter_voltage_input_2": {
+        "name": "Input 2 voltage"
+      },
+      "inverter_amperage_input_2": {
+        "name": "Input 2 amperage"
+      },
+      "inverter_wattage_input_2": {
+        "name": "Input 2 wattage"
+      },
+      "inverter_voltage_input_3": {
+        "name": "Input 3 voltage"
+      },
+      "inverter_amperage_input_3": {
+        "name": "Input 3 amperage"
+      },
+      "inverter_wattage_input_3": {
+        "name": "Input 3 wattage"
+      },
+      "inverter_internal_wattage": {
+        "name": "Internal wattage"
+      },
+      "inverter_reactive_voltage": {
+        "name": "Reactive voltage"
+      },
+      "inverter_reactive_amperage": {
+        "name": "Reactive amperage"
+      },
+      "inverter_frequency": {
+        "name": "AC frequency"
+      },
+      "inverter_current_wattage": {
+        "name": "Output power"
+      },
+      "inverter_current_reactive_wattage": {
+        "name": "Reactive wattage"
+      },
+      "inverter_ipm_temperature": {
+        "name": "Intelligent Power Management temperature"
+      },
+      "inverter_temperature": {
+        "name": "Inverter temperature"
+      },
+      "mix_statement_of_charge": {
+        "name": "State of charge"
+      },
+      "mix_battery_charge_today": {
+        "name": "Battery charged today"
+      },
+      "mix_battery_charge_lifetime": {
+        "name": "Lifetime battery charged"
+      },
+      "mix_battery_discharge_today": {
+        "name": "Battery discharged today"
+      },
+      "mix_battery_discharge_lifetime": {
+        "name": "Lifetime battery discharged"
+      },
+      "mix_solar_generation_today": {
+        "name": "Solar energy today"
+      },
+      "mix_solar_generation_lifetime": {
+        "name": "Lifetime solar energy"
+      },
+      "mix_battery_discharge_w": {
+        "name": "Battery discharging W"
+      },
+      "mix_battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "mix_pv1_voltage": {
+        "name": "PV1 voltage"
+      },
+      "mix_pv2_voltage": {
+        "name": "PV2 voltage"
+      },
+      "mix_load_consumption_today": {
+        "name": "Load consumption today"
+      },
+      "mix_load_consumption_lifetime": {
+        "name": "Lifetime load consumption"
+      },
+      "mix_export_to_grid_today": {
+        "name": "Export to grid today"
+      },
+      "mix_export_to_grid_lifetime": {
+        "name": "Lifetime export to grid"
+      },
+      "mix_battery_charge": {
+        "name": "Battery charging"
+      },
+      "mix_load_consumption": {
+        "name": "Load consumption"
+      },
+      "mix_wattage_pv_1": {
+        "name": "PV1 wattage"
+      },
+      "mix_wattage_pv_2": {
+        "name": "PV2 wattage"
+      },
+      "mix_wattage_pv_all": {
+        "name": "All PV wattage"
+      },
+      "mix_export_to_grid": {
+        "name": "Export to grid"
+      },
+      "mix_import_from_grid": {
+        "name": "Import from grid"
+      },
+      "mix_import_from_grid_today": {
+        "name": "Import from grid today"
+      },
+      "mix_import_from_grid_lifetime": {
+        "name": "Lifetime import from grid"
+      },
+      "storage_charge_today": {
+        "name": "Charge today"
+      },
+      "storage_charge_lifetime": {
+        "name": "Lifetime charge"
+      },
+      "storage_discharge_today": {
+        "name": "Discharge today"
+      },
+      "storage_discharge_lifetime": {
+        "name": "Lifetime discharge"
+      },
+      "storage_current_charge_w": {
+        "name": "Current charge"
+      },
+      "storage_current_discharge_w": {
+        "name": "Current discharge"
+      },
+      "storage_state_of_charge": {
+        "name": "State of charge"
+      },
+      "tlx_energy_today": {
+        "name": "Energy today"
+      },
+      "tlx_energy_total": {
+        "name": "Lifetime energy output"
+      },
+      "total_energy_today": {
+        "name": "Energy today"
+      },
+      "total_energy_total": {
+        "name": "Lifetime energy output"
+      },
+      "total_current_power": {
+        "name": "Current power"
+      },
+      "total_current_power_consumption": {
+        "name": "Current consumption"
+      }
+    }
+  }
+}

@@ -9,7 +9,7 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features (v1.3.2)
+## Features (v1.3.3)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration  
 
@@ -27,6 +27,7 @@ This repository serves as an **upstream testing ground** for improvements to the
 ### HACS (Recommended)
 
 #### Step 1: Add Custom Repository
+
 1. Open HACS in Home Assistant
 2. Go to "Integrations"
 3. Click the 3-dot menu → "Custom repositories"
@@ -35,11 +36,13 @@ This repository serves as an **upstream testing ground** for improvements to the
 6. Click "Add"
 
 #### Step 2: Download the Integration
+
 7. Search for "Growatt Server Upstream" in HACS
 8. Click on it and select "Download"
 9. Restart Home Assistant
 
 #### Step 3: Configure the Integration
+
 10. Go to Settings → Devices & Services
 11. Click "Add Integration"
 12. Search for "Growatt Server Upstream"
