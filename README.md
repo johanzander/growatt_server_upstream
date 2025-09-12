@@ -9,7 +9,7 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features (v1.3.4)
+## Features (v1.3.5)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration  
 
@@ -19,6 +19,7 @@ This repository serves as an **upstream testing ground** for improvements to the
 2. [API Token authentication support][pr-149783] - Official V1 API for MIN devices
 3. [Improved error handling during login][pr-151025]
 4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
+5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
 
 ## Installation
 
