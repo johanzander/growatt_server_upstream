@@ -65,6 +65,25 @@ class ApiThrottleManager:
                 )
                 return False
 
+            # Old format: ISO string without explicit timezone info  
+            # New format: ISO string with explicit UTC timezone info
+            if last_call.tzinfo is None:
+                # This is likely a legacy timestamp from old torage
+                # We stored UTC times but without timezone markers, so assume UTC
+                _LOGGER.debug(
+                    "Found legacy timestamp without timezone for %s, assuming UTC: %s", 
+                    func_name, last_call_str
+                )
+                last_call = last_call.replace(tzinfo=dt_util.UTC)
+            elif last_call.tzinfo != dt_util.UTC:
+                # This shouldn't happen with either old or new format, but handle edge cases
+                # where dt_util.parse_datetime() returns a non-UTC timezone
+                _LOGGER.warning(
+                    "Unexpected timezone %s for %s, converting to UTC", 
+                    last_call.tzinfo, func_name
+                )
+                last_call = last_call.astimezone(dt_util.UTC)
+
             # Optimization: use total_seconds() to avoid object creation
             time_since_last_call = dt_util.utcnow() - last_call
             time_since_seconds = time_since_last_call.total_seconds()
@@ -105,7 +124,8 @@ class ApiThrottleManager:
         """Record that an API call was made."""
         await self.async_load()
 
-        current_time = dt_util.utcnow().isoformat()
+        # Ensure we store UTC timestamp with explicit timezone info
+        current_time = dt_util.utcnow().replace(tzinfo=dt_util.UTC).isoformat()
         self._data[func_name] = current_time
         _LOGGER.debug("Recording API call for %s at %s", func_name, current_time)
         self._store.async_delay_save(self._data.copy, delay=1)

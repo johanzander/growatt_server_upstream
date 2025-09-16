@@ -9,9 +9,9 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features (v1.3.5)
+## Features (v1.3.6)
 
-**Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration  
+**Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 
 **Changes from Base Version**:
 
@@ -20,6 +20,7 @@ This repository serves as an **upstream testing ground** for improvements to the
 3. [Improved error handling during login][pr-151025]
 4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
 5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
+6. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throtteling times (500 muinutes)
 
 ## Installation
 
@@ -58,6 +59,24 @@ This repository serves as an **upstream testing ground** for improvements to the
 ## Contributing
 
 Contributions welcome! Create feature branch, implement changes, test thoroughly, submit PR. All contributions considered for submission back to Home Assistant Core.
+
+## Debug Logging
+
+To enable debug logging for troubleshooting issues, add the following to your Home Assistant `configuration.yaml`:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.growatt_server: debug
+```
+
+After adding this configuration:
+
+1. Restart Home Assistant
+2. Reproduce the issue
+3. Check the logs in **Settings → System → Logs** or in your `home-assistant.log` file
+4. Include relevant log entries when reporting issues
 
 ## Support
 

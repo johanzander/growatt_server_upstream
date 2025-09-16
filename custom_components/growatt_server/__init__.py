@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import logging
 
 import growattServer
+import requests
 
 from homeassistant.components import persistent_notification
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
@@ -36,12 +37,12 @@ def get_device_list_classic(
     # Log in to api and fetch first plant if no plant id is defined.
     try:
         login_response = api.login(config[CONF_USERNAME], config[CONF_PASSWORD])
-        # DEBUG: Log the actual response structure
-        _LOGGER.debug("DEBUG - Login response: %s", login_response)
-    except Exception as ex:
-        raise ConfigEntryError(
-            f"Error communicating with Growatt API during login: {ex}"
-        ) from ex
+    except requests.exceptions.RequestException as ex:
+        raise ConfigEntryError(f"Network error during Growatt API login: {ex}") from ex
+    except ValueError as ex:
+        raise ConfigEntryError(f"Invalid response format during login: {ex}") from ex
+    except KeyError as ex:
+        raise ConfigEntryError(f"Missing expected key in login response: {ex}") from ex
 
     if not login_response.get("success"):
         msg = login_response.get("msg", "Unknown error")
@@ -50,30 +51,38 @@ def get_device_list_classic(
             raise ConfigEntryAuthFailed("Username, Password or URL may be incorrect!")
         raise ConfigEntryError(f"Growatt login failed: {msg}")
 
-    user_id = login_response["user"]["id"]
+    try:
+        user_id = login_response["user"]["id"]
+    except KeyError as ex:
+        raise ConfigEntryError(f"Missing user ID in login response: {ex}") from ex
 
     if plant_id == DEFAULT_PLANT_ID:
         try:
             plant_info = api.plant_list(user_id)
-        except Exception as ex:
-            raise ConfigEntryError(
-                f"Error communicating with Growatt API during plant list: {ex}"
-            ) from ex
+        except requests.exceptions.RequestException as ex:
+            raise ConfigEntryError(f"Network error during plant list: {ex}") from ex
+        except ValueError as ex:
+            raise ConfigEntryError(f"Invalid response format during plant list: {ex}") from ex
+        except KeyError as ex:
+            raise ConfigEntryError(f"Missing expected key in plant list response: {ex}") from ex
+
         if not plant_info or "data" not in plant_info or not plant_info["data"]:
             raise ConfigEntryError("No plants found for this account.")
         plant_id = plant_info["data"][0].get("plantId")
         if not plant_id:
             raise ConfigEntryError("Plant ID missing in plant info.")
 
-    # Get a list of devices for specified plant to add sensors for.
     try:
         devices = api.device_list(plant_id)
-    except Exception as ex:
-        raise ConfigEntryError(
-            f"Error communicating with Growatt API during device list: {ex}"
-        ) from ex
+    except requests.exceptions.RequestException as ex:
+        raise ConfigEntryError(f"Network error during device list: {ex}") from ex
+    except ValueError as ex:
+        raise ConfigEntryError(f"Invalid response format during device list: {ex}") from ex
+    except KeyError as ex:
+        raise ConfigEntryError(f"Missing expected key in device list response: {ex}") from ex
 
     return devices, plant_id
+
 
 
 def get_device_list_v1(
@@ -200,6 +209,11 @@ async def async_setup_entry(
             last_call_str = throttle_data[func_name]
             last_call = dt_util.parse_datetime(last_call_str)
             if last_call:
+                # Ensure timezone-aware UTC for comparison
+                if last_call.tzinfo is None:
+                    last_call = last_call.replace(tzinfo=dt_util.UTC)
+                elif last_call.tzinfo != dt_util.UTC:
+                    last_call = last_call.astimezone(dt_util.UTC)
                 elapsed_seconds = (dt_util.utcnow() - last_call).total_seconds()
                 remaining_seconds = (API_THROTTLE_MINUTES * 60) - elapsed_seconds
                 minutes_remaining = max(0, remaining_seconds / 60)
@@ -428,9 +442,19 @@ async def async_unload_entry(
         config_entry.title,
     )
 
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        config_entry, PLATFORMS
-    )
+    # Only try to unload platforms if they were actually loaded
+    # This prevents errors when setup failed due to throttling
+    if hasattr(config_entry, 'runtime_data') and config_entry.runtime_data is not None:
+        unload_ok = await hass.config_entries.async_unload_platforms(
+            config_entry, PLATFORMS
+        )
+    else:
+        # No platforms were loaded, so unload is automatically successful
+        _LOGGER.debug(
+            "No platforms to unload for entry %s (setup never completed)",
+            config_entry.entry_id,
+        )
+        unload_ok = True
 
     if unload_ok:
         _LOGGER.info(
