@@ -103,18 +103,21 @@ def get_device_list_v1(
         ) from e
     devices = devices_dict.get("devices", [])
     # Only MIX (type =5 ) MIN (type = 7)  device support implemented in current V1 API
-    supported_devices = [
-        {
-            "deviceSn": device.get("device_sn", ""),
-            "deviceType": "min",
-        },
-                {
-            "deviceSn": device.get("device_sn", ""),
-            "deviceType": "mix",
-        }
-        for device in devices
-        if device.get("type") in (5, 7)
-    ]
+    # Only include supported device types: MIX (type=5) and MIN (type=7)
+    supported_devices = []
+    for device in devices:
+        device_type = device.get("type")
+        device_sn = device.get("device_sn", "")
+        if device_type == 5:
+            supported_devices.append({
+                "deviceSn": device_sn,
+                "deviceType": "mix",
+            })
+        elif device_type == 7:
+            supported_devices.append({
+                "deviceSn": device_sn,
+                "deviceType": "min",
+            })
 
     for device in devices:
         if device.get("type") not in (5, 7):
