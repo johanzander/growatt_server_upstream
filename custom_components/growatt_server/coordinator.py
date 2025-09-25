@@ -179,7 +179,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     mix_energy = self.api.device_energy(self.device_id, 'mix')
                     mix_info = {**mix_details, **mix_settings, **mix_energy}
                     self.data = miX_info
-                _   LOGGER.debug("mix_info for device %s: %r", self.device_id, miX_info)
+                    _LOGGER.debug("mix_info for device %s: %r", self.device_id, miX_info)
                 except growattServer.GrowattV1ApiError as err:
                     _LOGGER.error(
                         "Error fetching mix device data for %s: %s", self.device_id, err
@@ -223,7 +223,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_id,
                 self.device_type,
             )
-           
+
 
         return self.data
 
