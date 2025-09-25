@@ -103,11 +103,6 @@ def get_device_list_v1(
         ) from e
     devices = devices_dict.get("devices", [])
     # Only MIX (type =5 ) MIN (type = 7)  device support implemented in current V1 API
-    _LOGGER.warning
-        "XXXXXXXXXXXXXXX %s with type %s not supported in Open API V1, skipping",
-        device.get("device_sn", ""),
-        device.get("type"),
-    )
     supported_devices = [
         {
             "deviceSn": device.get("device_sn", ""),
