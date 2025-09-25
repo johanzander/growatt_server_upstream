@@ -102,18 +102,27 @@ def get_device_list_v1(
             f"API error during device list: {e} (Code: {getattr(e, 'error_code', None)}, Message: {getattr(e, 'error_msg', None)})"
         ) from e
     devices = devices_dict.get("devices", [])
-    # Only MIN device (type = 7) support implemented in current V1 API
+    # Only MIX (type =5 ) MIN (type = 7)  device support implemented in current V1 API
+    _LOGGER.warning
+        "XXXXXXXXXXXXXXX %s with type %s not supported in Open API V1, skipping",
+        device.get("device_sn", ""),
+        device.get("type"),
+    )
     supported_devices = [
         {
             "deviceSn": device.get("device_sn", ""),
             "deviceType": "min",
+        },
+                {
+            "deviceSn": device.get("device_sn", ""),
+            "deviceType": "mix",
         }
         for device in devices
-        if device.get("type") == 7
+        if device.get("type") in (5, 7)
     ]
 
     for device in devices:
-        if device.get("type") != 7:
+        if device.get("type") not in (5, 7):
             _LOGGER.warning(
                 "Device %s with type %s not supported in Open API V1, skipping",
                 device.get("device_sn", ""),

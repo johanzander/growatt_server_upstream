@@ -132,57 +132,59 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 **storage_energy_overview,
             }
         elif self.device_type == "mix":
-            # Open API V1: min device
-            try:
-                mix_details = self.api.device_details(self.device_id ,'mix')
-                mix_settings = self.api.device_settings(self.device_id, 'mix')
-                mix_energy = self.api.device_energy(self.device_id, 'mix')
-                mix_info = {**mix_details, **miX_settings, **miX_energy}
-                self.data = miX_info
-                _LOGGER.debug("mix_info for device %s: %r", self.device_id, miX_info)
-            except growattServer.GrowattV1ApiError as err:
-                _LOGGER.error(
-                    "Error fetching mix device data for %s: %s", self.device_id, err
+            if self.api_version == "v1":
+                # Open API V1: min device
+                try:
+                    mix_details = self.api.device_details(self.device_id ,'mix')
+                    mix_settings = self.api.device_settings(self.device_id, 'mix')
+                    mix_energy = self.api.device_energy(self.device_id, 'mix')
+                    mix_info = {**mix_details, **mix_settings, **mix_energy}
+                    self.data = miX_info
+                _   LOGGER.debug("mix_info for device %s: %r", self.device_id, miX_info)
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.error(
+                        "Error fetching mix device data for %s: %s", self.device_id, err
+                    )
+                    raise UpdateFailed(f"Error fetching mix device data: {err}") from err
+            else:
+                mix_info = self.api.mix_info(self.device_id)
+                mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
+                mix_system_status = self.api.mix_system_status(
+                    self.device_id, self.plant_id
                 )
-                raise UpdateFailed(f"Error fetching mix device data: {err}") from err
-        elif self.device_type == "mixxx":
-            mix_info = self.api.mix_info(self.device_id)
-            mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
-            mix_system_status = self.api.mix_system_status(
-                self.device_id, self.plant_id
+                mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
+
+                # Get the chart data and work out the time of the last entry
+                mix_chart_entries = mix_detail["chartData"]
+                sorted_keys = sorted(mix_chart_entries)
+
+                # Create datetime from the latest entry
+                date_now = dt_util.now().date()
+                last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
+                mix_detail["lastdataupdate"] = datetime.datetime.combine(
+                    date_now,
+                    last_updated_time,  # type: ignore[arg-type]
+                    dt_util.get_default_time_zone(),
+                )
+
+                # Dashboard data for mix system
+                dashboard_data = self.api.dashboard_data(self.plant_id)
+                dashboard_values_for_mix = {
+                    "etouser_combined": float(dashboard_data["etouser"].replace("kWh", ""))
+                }
+                self.data = {
+                    **mix_info,
+                    **mix_totals,
+                    **mix_system_status,
+                    **mix_detail,
+                    **dashboard_values_for_mix,
+                }
+            _LOGGER.debug(
+                "Finished updating data for %s (%s)",
+                self.device_id,
+                self.device_type,
             )
-            mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
-
-            # Get the chart data and work out the time of the last entry
-            mix_chart_entries = mix_detail["chartData"]
-            sorted_keys = sorted(mix_chart_entries)
-
-            # Create datetime from the latest entry
-            date_now = dt_util.now().date()
-            last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
-            mix_detail["lastdataupdate"] = datetime.datetime.combine(
-                date_now,
-                last_updated_time,  # type: ignore[arg-type]
-                dt_util.get_default_time_zone(),
-            )
-
-            # Dashboard data for mix system
-            dashboard_data = self.api.dashboard_data(self.plant_id)
-            dashboard_values_for_mix = {
-                "etouser_combined": float(dashboard_data["etouser"].replace("kWh", ""))
-            }
-            self.data = {
-                **mix_info,
-                **mix_totals,
-                **mix_system_status,
-                **mix_detail,
-                **dashboard_values_for_mix,
-            }
-        _LOGGER.debug(
-            "Finished updating data for %s (%s)",
-            self.device_id,
-            self.device_type,
-        )
+           
 
         return self.data
 
