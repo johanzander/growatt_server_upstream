@@ -163,7 +163,7 @@ class GrowattServerConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
             description_placeholders={
-                "note": "Token authentication only supports MIN/TLX devices. For other device types, please use username/password authentication."
+                "note": "Token authentication only supports (MIN/TLX, MIX/SPH) devices. For other device types, please use username/password authentication."
             },
         )
 

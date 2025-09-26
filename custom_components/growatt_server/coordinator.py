@@ -112,11 +112,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self.device_type == "total":
             if self.api_version == "v1":
-                # Plant info
-                plants = self.api.plant_list()
-                _LOGGER.warning("Plants: Found %s plants", plants['count'])
-                plant_id = plants['plants'][0]['plant_id']
-                _LOGGER.warning("Plant: id %s plants", plant_id)
+                # # Plant info
+                # plants = self.api.plant_list()
+                # _LOGGER.debug("Plants: Found %s plants", plants['count'])
+                # plant_id = plants['plants'][0]['plant_id']
+                # _LOGGER.debug("Plant: id %s plants", plant_id)
                 # The V1 Plant APIs do not provide the same information as the classic plant_info() API
                 # More specifically:
                 # 1. There is no monetary information to be found, so today and lifetime money is not available
@@ -180,7 +180,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Open API V1: min device
                 try:
                     mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
-                    # mix_settings = self.api.device_settings(self.device_id, DeviceType.MIX_SPH)
                     mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
                     mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
