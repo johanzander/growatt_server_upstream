@@ -5,7 +5,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from .growattServer import growattServer
+from . import growattServer
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
