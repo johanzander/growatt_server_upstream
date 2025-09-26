@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from . import growattServer
+from .growattServer import DeviceType
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
@@ -15,7 +16,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_URL, DOMAIN
 from .models import GrowattRuntimeData
-from enum import Enum
 
 if TYPE_CHECKING:
     from .sensor.sensor_entity_description import GrowattSensorEntityDescription
@@ -25,12 +25,6 @@ type GrowattConfigEntry = ConfigEntry[GrowattRuntimeData]
 SCAN_INTERVAL = datetime.timedelta(minutes=5)
 
 _LOGGER = logging.getLogger(__name__)
-
-class DeviceType(Enum):
-    """Enumeration of Growatt device types."""
-    MIX_SPH = 5  # MIX/SPH devices
-    MIN_TLX = 7  # MIN/TLX devices
-
 
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator to manage Growatt data fetching."""
