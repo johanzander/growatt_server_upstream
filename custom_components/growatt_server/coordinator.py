@@ -94,7 +94,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # todayEnergy -> today_energy
                 # totalEnergy -> total_energy
                 # invTodayPpv -> current_power
-                total_info = self.api.plant_energy_overview(plant_id)
+                total_info = self.api.plant_energy_overview(self.plant_id)
                 total_info["todayEnergy"] = total_info["today_energy"]
                 total_info["totalEnergy"] = total_info["total_energy"]
                 total_info["invTodayPpv"] = total_info["current_power"]
