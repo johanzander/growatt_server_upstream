@@ -16,6 +16,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_URL, DOMAIN
 from .models import GrowattRuntimeData
+from enum import Enum
 
 if TYPE_CHECKING:
     from .sensor.sensor_entity_description import GrowattSensorEntityDescription
@@ -25,6 +26,11 @@ type GrowattConfigEntry = ConfigEntry[GrowattRuntimeData]
 SCAN_INTERVAL = datetime.timedelta(minutes=5)
 
 _LOGGER = logging.getLogger(__name__)
+
+class DeviceType(Enum):
+    """Enumeration of Growatt device types."""
+    MIX_SPH = 5  # MIX/SPH devices
+    MIN_TLX = 7  # MIN/TLX devices
 
 
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -53,7 +59,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
             self.token = config_entry.data["token"]
             self.api = growattServer.OpenApiV1(token=self.token)
-            self.device_types = growattServer.DeviceType()
         elif self.api_version == "classic":
             self.username = config_entry.data.get(CONF_USERNAME)
             self.password = config_entry.data[CONF_PASSWORD]
@@ -175,9 +180,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.api_version == "v1":
                 # Open API V1: min device
                 try:
-                    mix_details = self.api.device_details(self.device_id , self.device_types.MIX)
-                    mix_settings = self.api.device_settings(self.device_id, self.device_types.MIX)
-                    mix_energy = self.api.device_energy(self.device_id, self.device_types.MIX)
+                    mix_details = self.api.device_details(self.device_id , DeviceType.MIX)
+                    mix_settings = self.api.device_settings(self.device_id, DeviceType.MIX)
+                    mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX)
                     mix_info = {**mix_details, **mix_settings, **mix_energy}
                     self.data = miX_info
                     _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
