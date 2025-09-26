@@ -85,6 +85,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 plants = self.api.plant_list()
                 _LOGGER.warning("Plants: Found %s plants", plants['count'])
                 plant_id = plants['plants'][0]['plant_id']
+                _LOGGER.warning("Plant: id %s plants", plant_id)
                 # The V1 Plant APIs do not provide the same information as the classic plant_info() API
                 # More specifically:
                 # 1. There is no monetary information to be found, so today and lifetime money is not available
