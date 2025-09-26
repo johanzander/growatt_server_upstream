@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from . import growattServer
+from .growattServer import growattServer
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult

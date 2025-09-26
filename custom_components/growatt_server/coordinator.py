@@ -5,7 +5,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from . import growattServer
+from .growattServer import growattServer
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
@@ -135,17 +135,17 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.api_version == "v1":
                 # Open API V1: min device
                 try:
-                    mix_details = self.api.device_details(self.device_id ,'mix')
-                    mix_settings = self.api.device_settings(self.device_id, 'mix')
-                    mix_energy = self.api.device_energy(self.device_id, 'mix')
+                    mix_details = self.api.device_details(self.device_id ,self.device_type)
+                    mix_settings = self.api.device_settings(self.device_id, self.device_type)
+                    mix_energy = self.api.device_energy(self.device_id, self.device_type)
                     mix_info = {**mix_details, **mix_settings, **mix_energy}
                     self.data = miX_info
-                    _LOGGER.debug("mix_info for device %s: %r", self.device_id, miX_info)
+                    _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
                 except growattServer.GrowattV1ApiError as err:
                     _LOGGER.error(
                         "Error fetching mix device data for %s: %s", self.device_id, err
                     )
-                    raise UpdateFailed(f"Error fetching mix device data: {err}") from err
+                    raise UpdateFailed(f"Error fetching {self.device_type} device data: {err}") from err
             else:
                 mix_info = self.api.mix_info(self.device_id)
                 mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
