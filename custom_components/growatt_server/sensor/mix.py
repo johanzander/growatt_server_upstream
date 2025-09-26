@@ -143,14 +143,14 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_wattage_pv_1",
         translation_key="mix_wattage_pv_1",
-        api_key="pPv1",
+        api_key="ppv1",
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),
     GrowattSensorEntityDescription(
         key="mix_wattage_pv_2",
         translation_key="mix_wattage_pv_2",
-        api_key="pPv2",
+        api_key="ppv2",
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),
