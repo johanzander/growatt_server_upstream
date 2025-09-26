@@ -15,7 +15,7 @@
         "description": "Note: API Token authentication is currently only supported for MIN/TLX devices. For other device types, please use Username & Password authentication.",
         "menu_options": {
           "password_auth": "Username & Password",
-          "token_auth": "API Token (MIN/TLX only)"
+          "token_auth": "API Token (MIN/TLX, MIX/SPH only)"
         }
       },
       "password_auth": {

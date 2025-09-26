@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Mapping
 import logging
 
-import growattServer
+from . import growattServer
 import requests
 import voluptuous as vol
 

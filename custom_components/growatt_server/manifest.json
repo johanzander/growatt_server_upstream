@@ -1,5 +1,5 @@
 {
-  "domain": "growatt_server",
+  "domain": "growatt_server_local",
   "name": "Growatt Server Upstream",
   "codeowners": ["@johanzander"],
   "config_flow": true,
