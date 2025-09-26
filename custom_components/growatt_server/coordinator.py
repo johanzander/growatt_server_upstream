@@ -141,9 +141,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Open API V1: min device
                 try:
                     mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
-                    mix_settings = self.api.device_settings(self.device_id, DeviceType.MIX_SPH)
+                    # mix_settings = self.api.device_settings(self.device_id, DeviceType.MIX_SPH)
                     mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
-                    mix_info = {**mix_details, **mix_settings, **mix_energy}
+                    mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
                     _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
                 except growattServer.GrowattV1ApiError as err:
