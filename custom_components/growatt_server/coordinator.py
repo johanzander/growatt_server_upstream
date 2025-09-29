@@ -181,15 +181,12 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 try:
                     mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
                     mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
+                    mix_details["lastdataupdate"] = dt_util.parse_datetime(mix_details.get('lastUpdateTimeText'))
+                    # The API returns UTC time without timezone info, so we need to set it to local
+                    if mix_details["lastdataupdate"] is not None:
+                        mix_details["lastdataupdate"] = mix_details["lastdataupdate"].replace(tzinfo=dt_util.get_default_time_zone())
+                
                     mix_info = {**mix_details, **mix_energy}
-                                  # Create datetime from the latest entry
-                    date_now = dt_util.now().date()
-                    last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
-                    mix_details["lastdataupdate"] = datetime.datetime.combine(
-                        date_now,
-                        last_updated_time,  # type: ignore[arg-type]
-                        dt_util.get_default_time_zone(),
-                    )
                     self.data = mix_info
                     _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
                 except growattServer.GrowattV1ApiError as err:
