@@ -164,15 +164,15 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_export_to_grid",
         translation_key="mix_export_to_grid",
-        api_key=["pacToGridTotal", "pacToGrid"],
-        native_unit_of_measurement=UnitOfPower.WATT,
+        api_key=["pactogrid", "pacToGrid"],
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),
     GrowattSensorEntityDescription(
         key="mix_import_from_grid",
         translation_key="mix_import_from_grid",
         api_key=["pactouser","pacToUserTotal"],
-        native_unit_of_measurement=UnitOfPower.WATT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),
     GrowattSensorEntityDescription(
