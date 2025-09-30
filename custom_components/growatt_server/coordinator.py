@@ -144,6 +144,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
 
                     date_now = dt_util.now().date()
+
+                    _LOGGER.error(
+                        "Error fetching mix_energy data for %s: %s", mix_energy, mix_energy.get("time", "00:00")
+                    )
+
                     last_updated_time = dt_util.parse_time(str(mix_energy.get("time", "00:00")))
                     mix_detail["lastdataupdate"] = datetime.datetime.combine(
                         date_now,
