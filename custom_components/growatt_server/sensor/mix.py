@@ -136,7 +136,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_load_consumption",
         translation_key="mix_load_consumption",
-        api_key="pLocalLoad",
+        api_key=["pLocalLoad","elocalLoadToday"],
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),

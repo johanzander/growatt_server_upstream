@@ -149,9 +149,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     tz = dt_util.get_default_time_zone()
                     aware_dt = naive_dt.replace(tzinfo=tz)
                     mix_details["lastdataupdate"] = aware_dt
-                    _LOGGER.error(
-                        "MIX DETAILS for %s -> %s", mix_details, naive_dt
-                    )
 
                     mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
