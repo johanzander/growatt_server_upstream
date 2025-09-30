@@ -154,7 +154,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     # )
                     date_str = mix_energy.get("time", "00:00")
                     date_format = '%Y-%m-%d %H:%M:%S'
-                    last_updated_time = datetime.datetime.strptime(date_str, date_format)
+                    last_updated_time = dt_util.parse_time(datetime.datetime.strptime(date_str, date_format))
 
                     date_now = dt_util.now().date()
                     mix_detail["lastdataupdate"] = datetime.datetime.combine(
