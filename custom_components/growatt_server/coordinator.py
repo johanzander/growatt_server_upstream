@@ -142,6 +142,15 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 try:
                     mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
                     mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
+
+                    date_now = dt_util.now().date()
+                    last_updated_time = dt_util.parse_time(str(mix_energy.get("time", "00:00")))
+                    mix_detail["lastdataupdate"] = datetime.datetime.combine(
+                        date_now,
+                        last_updated_time,  # type: ignore[arg-type]
+                        dt_util.get_default_time_zone(),
+                    )
+
                     mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
                     _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
@@ -208,9 +217,21 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self, entity_description: "GrowattSensorEntityDescription"
     ) -> str | int | float | None:
         """Get the data."""
-        variable = entity_description.api_key
-        api_value = self.data.get(variable)
-        previous_value = self.previous_values.get(variable)
+        # Support entity_description.api_key being either str or list/tuple of str
+        api_key = entity_description.api_key
+        api_value = None
+
+        if isinstance(api_key, str):
+            api_value = self.data.get(api_key)
+        elif isinstance(api_key, (list, tuple)):
+            # Try each key in the array until we find a match
+            for key in api_key:
+            value = self.data.get(key)
+            if value is not None:
+                api_value = value
+                break
+
+        previous_value = self.previous_values.get(api_key if isinstance(api_key, str) else api_key[0])
         return_value = api_value
 
         # If we have a 'drop threshold' specified, then check it and correct if needed

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Union, List
 
 from homeassistant.components.sensor import SensorEntityDescription
 
@@ -11,13 +12,14 @@ from homeassistant.components.sensor import SensorEntityDescription
 class GrowattRequiredKeysMixin:
     """Mixin for required keys."""
 
-    api_key: str
+    api_key: Union[str, List[str]]
 
 
 @dataclass(frozen=True)
 class GrowattSensorEntityDescription(SensorEntityDescription, GrowattRequiredKeysMixin):
     """Describes Growatt sensor entity."""
 
+    api_key: Union[str, List[str]]
     precision: int | None = None
     currency: bool = False
     previous_value_drop_threshold: float | None = None
