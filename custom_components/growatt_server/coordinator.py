@@ -182,26 +182,17 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
                     mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
 
-                    # date_now = dt_util.now().date()
 
-                    # last_updated_time = dt_util.parse_time(str(mix_energy.get("time", "00:00")))
-                    # _LOGGER.error(
-                    #     "Error fetching mix_energy data for %s: %s , parsed %s",
-                    #     mix_energy,
-                    #     mix_energy.get("time", "00:00"),
-                    #     last_updated_time
-                    # )
-                    date_str = mix_energy.get("time", "00:00")
+                    date_str = mix_energy.get("time")
                     date_format = '%Y-%m-%d %H:%M:%S'
-                    last_updated_time = dt_util.parse_time(datetime.datetime.strptime(date_str, date_format))
-
-                    date_now = dt_util.now().date()
-                    mix_detail["lastdataupdate"] = datetime.datetime.combine(
-                        date_now,
-                        last_updated_time,  # type: ignore[arg-type]
-                        dt_util.get_default_time_zone(),
-                    )
-
+                    # Parse the date string into a naive datetime object
+                    naive_dt = datetime.datetime.strptime(date_str, date_format)
+                    # Attach the timezone from dt_util.get_default_time_zone()
+                    tz = dt_util.get_default_time_zone()
+                    aware_dt = tz.localize(naive_dt)
+                    last_updated_time = aware_dt.time()
+                    
+                    mix_detail["lastdataupdate"] = last_updated_time
                     _LOGGER.error(
                         "MIX DETAILS for %s -> %s", mix_details, last_updated_time
                     )
