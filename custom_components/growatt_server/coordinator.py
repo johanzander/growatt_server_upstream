@@ -255,25 +255,31 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Get the currency."""
         return self.data.get("currency")
 
+    def _get_matching_api_key(
+        self, variable: str | list[str] | tuple[str], key_list: dict[str, Any]
+    ) -> str | None:
+        """Get the matching api_key from the data."""
+        if isinstance(variable, str):
+            api_value = key_list.get(variable)
+            return variable
+        elif isinstance(variable, (list, tuple)):
+            # Try each key in the array until we find a match
+            for key in variable:
+                value = key_list.get(key)
+                if value is not None:
+                    api_value = value
+                    return key
+                    break
+
     def get_data(
         self, entity_description: "GrowattSensorEntityDescription"
     ) -> str | int | float | None:
         """Get the data."""
         # Support entity_description.api_key being either str or list/tuple of str
-        api_key = entity_description.api_key
-        api_value = None
+        api_key = self._get_matching_api_key(self, entity_description.api_key, self.data)
+        api_value = self.data.get(api_key)
 
-        if isinstance(api_key, str):
-            api_value = self.data.get(api_key)
-        elif isinstance(api_key, (list, tuple)):
-            # Try each key in the array until we find a match
-            for key in api_key:
-                value = self.data.get(key)
-                if value is not None:
-                    api_value = value
-                    break
-
-        previous_value = self.previous_values.get(api_key if isinstance(api_key, str) else api_key[0])
+        previous_value = self.previous_values.get(api_key)
         return_value = api_value
 
         # If we have a 'drop threshold' specified, then check it and correct if needed
