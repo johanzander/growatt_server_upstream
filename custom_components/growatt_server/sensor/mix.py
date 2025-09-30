@@ -207,7 +207,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_self_consumption_today",
         translation_key="mix_self_consumption_today",
-        api_key="eChargeToday1",
+        api_key=["eChargeToday1","eselfToday"],
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
     ),
