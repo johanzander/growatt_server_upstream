@@ -191,8 +191,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     #     mix_energy.get("time", "00:00"),
                     #     last_updated_time
                     # )
-
-                    mix_details["lastdataupdate"] = mix_energy.get("time", "00:00")
+                    date_str = mix_energy.get("time", "00:00")
+                    date_format = '%Y-%m-%d %H:%M:%S'
+                    mix_details["lastdataupdate"] = datetime.strptime(date_str, date_format)
                     mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
                     _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
