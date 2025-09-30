@@ -150,9 +150,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     naive_dt = datetime.datetime.strptime(date_str, date_format)
                     # Attach the timezone from dt_util.get_default_time_zone()
                     tz = dt_util.get_default_time_zone()
-                    aware_dt = tz.localize(naive_dt)
-                    last_updated_time = aware_dt.time()
-                    
+                    aware_dt = naive_dt.replace(tzinfo=tz)
+                    last_updated_time = aware_dt.timetz()
+
                     mix_detail["lastdataupdate"] = last_updated_time
                     _LOGGER.error(
                         "MIX DETAILS for %s -> %s", mix_details, last_updated_time
