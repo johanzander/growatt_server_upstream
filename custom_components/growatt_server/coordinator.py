@@ -184,11 +184,14 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                     date_now = dt_util.now().date()
 
+                    last_updated_time = dt_util.parse_time(str(mix_energy.get("time", "00:00")))
                     _LOGGER.error(
-                        "Error fetching mix_energy data for %s: %s", mix_energy, mix_energy.get("time", "00:00")
+                        "Error fetching mix_energy data for %s: %s , parsed %s",
+                        mix_energy,
+                        mix_energy.get("time", "00:00"),
+                        last_updated_time
                     )
 
-                    last_updated_time = dt_util.parse_time(str(mix_energy.get("time", "00:00")))
                     mix_detail["lastdataupdate"] = datetime.datetime.combine(
                         date_now,
                         last_updated_time,  # type: ignore[arg-type]
