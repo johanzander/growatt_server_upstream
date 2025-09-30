@@ -226,10 +226,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif isinstance(api_key, (list, tuple)):
             # Try each key in the array until we find a match
             for key in api_key:
-            value = self.data.get(key)
-            if value is not None:
-                api_value = value
-                break
+                value = self.data.get(key)
+                if value is not None:
+                    api_value = value
+                    break
 
         previous_value = self.previous_values.get(api_key if isinstance(api_key, str) else api_key[0])
         return_value = api_value
