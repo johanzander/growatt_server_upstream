@@ -237,10 +237,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> str | int | float | None:
         """Get the data."""
         # Support entity_description.api_key being either str or list/tuple of str
-        api_key = self._get_matching_api_key(entity_description.api_key, self.data)
-        api_value = self.data.get(api_key)
+        variable = self._get_matching_api_key(entity_description.api_key, self.data)
+        api_value = self.data.get(variable)
 
-        previous_value = self.previous_values.get(api_key)
+        previous_value = self.previous_values.get(variable)
         return_value = api_value
 
         # If we have a 'drop threshold' specified, then check it and correct if needed
