@@ -1,10 +1,9 @@
 """The Growatt server PV inverter sensor integration."""
 
 import asyncio
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 
-from . import growattServer
 import requests
 
 from homeassistant.components import persistent_notification
@@ -13,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.util import dt as dt_util
 
+from . import growattServer
 from .const import (
     CONF_PLANT_ID,
     DEFAULT_PLANT_ID,

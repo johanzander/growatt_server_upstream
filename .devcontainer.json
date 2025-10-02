@@ -1,5 +1,5 @@
 {
-    "name": "ludeeus/integration_blueprint",
+    "name": "johanzander/growatt_server_upstream",
     "image": "mcr.microsoft.com/devcontainers/python:3.13",
     "postCreateCommand": "scripts/setup",
     "forwardPorts": [
@@ -11,6 +11,10 @@
             "onAutoForward": "notify"
         }
     },
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+    "mounts": [
+        "source=/home/graeme/web/PyPi_GrowattServer/growattServer,target=/config/custom_components/growatt_server/growattServer,type=bind,consistency=cached"
+    ],
     "customizations": {
         "vscode": {
             "extensions": [
