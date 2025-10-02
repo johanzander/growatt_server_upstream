@@ -13,7 +13,8 @@
     },
     "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
     "mounts": [
-        "source=/home/graeme/web/PyPi_GrowattServer/growattServer,target=/config/custom_components/growatt_server/growattServer,type=bind,consistency=cached"
+        "source=/home/graeme/web/PyPi_GrowattServer/growattServer,target=/custom_components/growatt_server/growattServer,type=bind",
+        "source=/home/graeme/web/PyPi_GrowattServer/growattServer,target=/workspaces/${localWorkspaceFolderBasename}/custom_components/growatt_server/growattServer,type=bind"
     ],
     "customizations": {
         "vscode": {

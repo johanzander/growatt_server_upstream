@@ -14,6 +14,22 @@
           "panel": "new"
         },
         "problemMatcher": []
+      },
+      {
+        "label": "Start Home Assistant (Debug)",
+        "type": "shell",
+        "command": "PYTHONBREAKPOINT=pdb.set_trace scripts/develop",
+        "group": {
+          "kind": "test",
+          "isDefault": false
+        },
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        },
+        "problemMatcher": []
       }
     ]
   }
