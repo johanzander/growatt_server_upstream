@@ -62,9 +62,13 @@ def get_device_list_classic(
         except requests.exceptions.RequestException as ex:
             raise ConfigEntryError(f"Network error during plant list: {ex}") from ex
         except ValueError as ex:
-            raise ConfigEntryError(f"Invalid response format during plant list: {ex}") from ex
+            raise ConfigEntryError(
+                f"Invalid response format during plant list: {ex}"
+            ) from ex
         except KeyError as ex:
-            raise ConfigEntryError(f"Missing expected key in plant list response: {ex}") from ex
+            raise ConfigEntryError(
+                f"Missing expected key in plant list response: {ex}"
+            ) from ex
 
         if not plant_info or "data" not in plant_info or not plant_info["data"]:
             raise ConfigEntryError("No plants found for this account.")
@@ -77,18 +81,22 @@ def get_device_list_classic(
     except requests.exceptions.RequestException as ex:
         raise ConfigEntryError(f"Network error during device list: {ex}") from ex
     except ValueError as ex:
-        raise ConfigEntryError(f"Invalid response format during device list: {ex}") from ex
+        raise ConfigEntryError(
+            f"Invalid response format during device list: {ex}"
+        ) from ex
     except KeyError as ex:
-        raise ConfigEntryError(f"Missing expected key in device list response: {ex}") from ex
+        raise ConfigEntryError(
+            f"Missing expected key in device list response: {ex}"
+        ) from ex
 
     return devices, plant_id
-
 
 
 def get_device_list_v1(
     api, config: Mapping[str, str]
 ) -> tuple[list[dict[str, str]], str]:
-    """Device list logic for Open API V1.
+    """
+    Device list logic for Open API V1.
 
     Note: Plant selection (including auto-selection if only one plant exists)
     is handled in the config flow before this function is called. This function
@@ -96,48 +104,64 @@ def get_device_list_v1(
     """
     plant_id = config[CONF_PLANT_ID]
     try:
-        devices_dict = api.device_list(plant_id)
+        devices = api.get_devices(plant_id)
     except growattServer.GrowattV1ApiError as e:
-        raise ConfigEntryError(
-            f"API error during device list: {e} (Code: {getattr(e, 'error_code', None)}, Message: {getattr(e, 'error_msg', None)})"
-        ) from e
-    devices = devices_dict.get("devices", [])
+        error_code = getattr(e, "error_code", None)
+        error_msg = getattr(e, "error_msg", None)
+        msg = (
+            f"API error during device list: {e} "
+            f"(Code: {error_code}, "
+            f"Message: {error_msg})"
+        )
+        raise ConfigEntryError(msg) from e
+
     # Only MIX (type =5 ) MIN (type = 7)  device support implemented in current V1 API
     # Only include supported device types: MIX (type=5) and MIN (type=7)
     supported_devices = []
     for device in devices:
-        device_type = device.get("type")
-        device_sn = device.get("device_sn", "")
-        if device_type == 5:
-            supported_devices.append({
-                "deviceSn": device_sn,
-                "deviceType": "mix",
-            })
-        elif device_type == 7:
-            supported_devices.append({
-                "deviceSn": device_sn,
-                "deviceType": "min",
-            })
+        device_type = device.device_type
+        device_sn = device.device_sn
+        # Use integer values directly if MIX and MIN are not defined in DeviceType
+        if device_type == growattServer.DeviceType.MIX_SPH:
+            supported_devices.append(
+                {
+                    "deviceSn": device_sn,
+                    "deviceType": "mix",
+                }
+            )
+        elif device_type == growattServer.DeviceType.MIN_TLX:
+            supported_devices.append(
+                {
+                    "deviceSn": device_sn,
+                    "deviceType": "min",
+                }
+            )
 
     for device in devices:
-        if device.get("type") not in (5, 7):
+        if device.device_type not in (
+            growattServer.DeviceType.MIX_SPH,
+            growattServer.DeviceType.MIN_TLX,
+        ):
             _LOGGER.warning(
                 "Device %s with type %s not supported in Open API V1, skipping",
-                device.get("device_sn", ""),
-                device.get("type"),
+                device.device_sn,
+                device.device_type,
             )
     return supported_devices, plant_id
 
 
 def get_device_list(
-    api, config: Mapping[str, str], api_version: str
+    api: "growattServer.GrowattApi",
+    config: Mapping[str, str],
+    api_version: str,
 ) -> tuple[list[dict[str, str]], str]:
     """Dispatch to correct device list logic based on API version."""
     if api_version == "v1":
         return get_device_list_v1(api, config)
     if api_version == "classic":
         return get_device_list_classic(api, config)
-    raise ConfigEntryError(f"Unknown API version: {api_version}")
+    msg = f"Unknown API version: {api_version}"
+    raise ConfigEntryError(msg)
 
 
 async def async_setup_entry(
@@ -451,7 +475,7 @@ async def async_unload_entry(
 
     # Only try to unload platforms if they were actually loaded
     # This prevents errors when setup failed due to throttling
-    if hasattr(config_entry, 'runtime_data') and config_entry.runtime_data is not None:
+    if hasattr(config_entry, "runtime_data") and config_entry.runtime_data is not None:
         unload_ok = await hass.config_entries.async_unload_platforms(
             config_entry, PLATFORMS
         )

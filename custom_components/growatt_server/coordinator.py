@@ -82,10 +82,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.device_type == "total":
             if self.api_version == "v1":
                 # # Plant info
-                # plants = self.api.plant_list()
-                # _LOGGER.debug("Plants: Found %s plants", plants['count'])
-                # plant_id = plants['plants'][0]['plant_id']
-                # _LOGGER.debug("Plant: id %s plants", plant_id)
                 # The V1 Plant APIs do not provide the same information as the classic plant_info() API
                 # More specifically:
                 # 1. There is no monetary information to be found, so today and lifetime money is not available
@@ -94,10 +90,15 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # todayEnergy -> today_energy
                 # totalEnergy -> total_energy
                 # invTodayPpv -> current_power
-                total_info = self.api.plant_energy_overview(self.plant_id)
-                total_info["todayEnergy"] = total_info["today_energy"]
-                total_info["totalEnergy"] = total_info["total_energy"]
-                total_info["invTodayPpv"] = total_info["current_power"]
+                # Ensure plant_energy_overview is only called on OpenApiV1
+                if hasattr(self.api, "plant_energy_overview"):
+                    total_info = self.api.plant_energy_overview(self.plant_id)
+                    total_info["todayEnergy"] = total_info.get("today_energy")
+                    total_info["totalEnergy"] = total_info.get("total_energy")
+                    total_info["invTodayPpv"] = total_info.get("current_power")
+                else:
+                    msg = "plant_energy_overview is not available for this API class"
+                    raise AttributeError(msg)
             else:
                 # Classic API: use plant_info as before
                 total_info = self.api.plant_info(self.device_id)
