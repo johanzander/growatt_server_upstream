@@ -41,3 +41,7 @@ env/
 .idea/
 *.swp
 *.swo
+
+# Home Assistant configuration
+config/*
+!config/configuration.yaml
