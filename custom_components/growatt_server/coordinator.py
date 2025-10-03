@@ -190,6 +190,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     aware_dt = naive_dt.replace(tzinfo=tz)
                     mix_details["lastdataupdate"] = aware_dt
 
+                    mix_energy["ppv1"]= mix_energy.get("ppv1", 0) / 1000  # W to kW
+                    mix_energy["ppv2"]= mix_energy.get("ppv2", 0) / 1000  # W to kW
+                    mix_energy["ppv"] = mix_energy.get("ppv", 0) / 1000  # W to kW
+
                     mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
                     _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
