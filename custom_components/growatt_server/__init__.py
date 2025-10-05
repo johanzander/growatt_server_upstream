@@ -9,15 +9,17 @@ import requests
 
 from homeassistant.components import persistent_notification
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BATT_MODE_MAP,
     CONF_PLANT_ID,
     DEFAULT_PLANT_ID,
     DEFAULT_URL,
     DEPRECATED_URLS,
+    DOMAIN,
     LOGIN_INVALID_AUTH_CODE,
     PLATFORMS,
 )
@@ -424,12 +426,146 @@ async def async_setup_entry(
     # Set up all the entities
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
+    # Register services for MIN/TLX devices (TOU settings)
+    await _async_register_services(hass, config_entry, device_coordinators)
+
     _LOGGER.info(
         "Successfully set up Growatt integration (entry_id: %s) with %d devices",
         config_entry.entry_id,
         len(device_coordinators),
     )
     return True
+
+
+async def _async_register_services(
+    hass: HomeAssistant,
+    config_entry: GrowattConfigEntry,
+    device_coordinators: dict,
+) -> None:
+    """Register services for MIN/TLX devices."""
+    # Only register services if we have MIN or TLX devices
+    has_min_tlx = any(
+        coord.device_type in ("min", "tlx") and coord.api_version == "v1"
+        for coord in device_coordinators.values()
+    )
+
+    if not has_min_tlx:
+        _LOGGER.debug("No MIN/TLX devices found, skipping service registration")
+        return
+
+    async def handle_update_min_time_segment(call: ServiceCall) -> None:
+        """Handle update_min_time_segment service call."""
+        from datetime import datetime
+
+        segment_id = call.data["segment_id"]
+        batt_mode_str = str(call.data["batt_mode"])
+        start_time_str = call.data["start_time"]
+        end_time_str = call.data["end_time"]
+        enabled = call.data["enabled"]
+
+        if not (1 <= segment_id <= 9):
+            raise HomeAssistantError("segment_id must be between 1 and 9")
+
+        _LOGGER.debug(
+            "handle_update_min_time_segment: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s",
+            segment_id,
+            batt_mode_str,
+            start_time_str,
+            end_time_str,
+            enabled,
+        )
+
+        # Convert batt_mode string to integer
+        batt_mode = BATT_MODE_MAP.get(batt_mode_str)
+        if batt_mode is None:
+            _LOGGER.error("Invalid battery mode: %s", batt_mode_str)
+            raise HomeAssistantError(f"Invalid battery mode: {batt_mode_str}")
+
+        # Convert time strings to datetime.time objects
+        try:
+            start_time = datetime.strptime(start_time_str, "%H:%M").time()
+            end_time = datetime.strptime(end_time_str, "%H:%M").time()
+        except ValueError as err:
+            _LOGGER.error("Start_time and end_time must be in HH:MM format")
+            raise HomeAssistantError(
+                "start_time and end_time must be in HH:MM format"
+            ) from err
+
+        if not isinstance(enabled, bool):
+            raise HomeAssistantError("enabled must be a boolean value")
+
+        # Find the first MIN/TLX coordinator to use
+        coordinator = next(
+            (
+                coord
+                for coord in device_coordinators.values()
+                if coord.device_type in ("min", "tlx") and coord.api_version == "v1"
+            ),
+            None,
+        )
+
+        if coordinator is None:
+            raise HomeAssistantError("No MIN/TLX device found with V1 API")
+
+        try:
+            await coordinator.update_min_time_segment(
+                segment_id,
+                batt_mode,
+                start_time,
+                end_time,
+                enabled,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Error updating MIN/TLX time segment %d: %s",
+                segment_id,
+                err,
+            )
+            raise HomeAssistantError(
+                f"Error updating MIN/TLX time segment {segment_id}: {err}"
+            ) from err
+
+    async def handle_read_min_time_segments(call: ServiceCall) -> dict:
+        """Handle read_min_time_segments service call."""
+        # Find the first MIN/TLX coordinator to use
+        coordinator = next(
+            (
+                coord
+                for coord in device_coordinators.values()
+                if coord.device_type in ("min", "tlx") and coord.api_version == "v1"
+            ),
+            None,
+        )
+
+        if coordinator is None:
+            raise HomeAssistantError("No MIN/TLX device found with V1 API")
+
+        try:
+            time_segments = await coordinator.read_min_time_segments()
+            return {"time_segments": time_segments}
+        except Exception as err:
+            _LOGGER.error("Error reading MIN/TLX time segments: %s", err)
+            raise HomeAssistantError(
+                f"Error reading MIN/TLX time segments: {err}"
+            ) from err
+
+    # Register the services
+    if not hass.services.has_service(DOMAIN, "update_min_time_segment"):
+        hass.services.async_register(
+            DOMAIN,
+            "update_min_time_segment",
+            handle_update_min_time_segment,
+        )
+        _LOGGER.info("Registered service: update_min_time_segment")
+
+    if not hass.services.has_service(DOMAIN, "read_min_time_segments"):
+        hass.services.async_register(
+            DOMAIN,
+            "read_min_time_segments",
+            handle_read_min_time_segments,
+            supports_response=SupportsResponse.ONLY,
+        )
+        _LOGGER.info("Registered service: read_min_time_segments")
 
 
 async def async_unload_entry(

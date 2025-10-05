@@ -2,10 +2,12 @@
   "config": {
     "abort": {
       "already_configured": "Device is already configured",
+      "cannot_connect": "Cannot connect to Growatt servers. Please check your internet connection and try again.",
       "no_plants": "No plants have been found on this account"
     },
     "error": {
-      "invalid_auth": "Authentication failed. Please check your credentials and try again."
+      "invalid_auth": "Authentication failed. Please check your credentials and try again.",
+      "cannot_connect": "Cannot connect to Growatt servers. Please check your internet connection and try again."
     },
     "step": {
       "user": {
@@ -40,6 +42,38 @@
     }
   },
   "title": "Growatt Server",
+  "services": {
+    "update_min_time_segment": {
+      "name": "Update MIN/TLX time segment",
+      "description": "Update a time-of-use (TOU) segment for MIN/TLX inverters",
+      "fields": {
+        "segment_id": {
+          "name": "Segment ID",
+          "description": "Time segment ID (1-9)"
+        },
+        "batt_mode": {
+          "name": "Battery mode",
+          "description": "Battery operation mode for this time segment"
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "Start time for the segment (HH:MM format)"
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "End time for the segment (HH:MM format)"
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether this time segment is active"
+        }
+      }
+    },
+    "read_min_time_segments": {
+      "name": "Read MIN/TLX time segments",
+      "description": "Read all time-of-use (TOU) segments from a MIN/TLX inverter"
+    }
+  },
   "entity": {
     "sensor": {
       "inverter_energy_today": {
@@ -209,6 +243,25 @@
       },
       "total_current_power_consumption": {
         "name": "Current consumption"
+      }
+    },
+    "number": {
+      "charge_power": {
+        "name": "Charge power"
+      },
+      "charge_stop_soc": {
+        "name": "Charge stop SOC"
+      },
+      "discharge_power": {
+        "name": "Discharge power"
+      },
+      "discharge_stop_soc": {
+        "name": "Discharge stop SOC"
+      }
+    },
+    "switch": {
+      "ac_charge": {
+        "name": "AC charge"
       }
     }
   }

@@ -9,18 +9,38 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features (v1.3.6)
+## Features (v1.4.1)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 
 **Changes from Base Version**:
 
 1. `manifest.json` updated for custom component distribution
-2. [API Token authentication support][pr-149783] - Official V1 API for MIN devices
-3. [Improved error handling during login][pr-151025]
-4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
-5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
-6. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throtteling times (500 muinutes)
+2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX devices
+3. [MIN/TLX inverter control][pr-153468] - Number and switch entities for controlling inverter settings
+4. Read / write Time Of Use (TOU) settings using service calls:
+  `growattserver.read_min_time_segments,
+  growattserver.update_min_time_segment`
+5. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
+6. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
+7. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
+
+### MIN/TLX Inverter Control Features (V1 API)
+
+When using token authentication with MIN/TLX inverters, you get:
+
+**Number Entities** (0-100%):
+
+- Charge power
+- Charge stop SOC
+- Discharge power
+- Discharge stop SOC
+
+**Switch Entities**:
+
+- AC charge enable/disable
+
+All control entities provide real-time feedback and proper error handling.
 
 ## Installation
 
@@ -91,5 +111,5 @@ After adding this configuration:
 [releases-shield]: https://img.shields.io/github/release/johanzander/growatt_server_upstream.svg
 [releases]: https://github.com/johanzander/growatt_server_upstream/releases
 [pr-149783]: https://github.com/home-assistant/core/pull/149783
-[pr-151025]: https://github.com/home-assistant/core/pull/151025
+[pr-153468]: https://github.com/home-assistant/core/pull/153468
 [issue-150732]: https://github.com/home-assistant/core/issues/150732
