@@ -24,6 +24,8 @@ This repository serves as an **upstream testing ground** for improvements to the
 5. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
 6. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
 7. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
+8. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
+monitoring
 
 ### MIN/TLX Inverter Control Features (V1 API)
 
@@ -41,6 +43,25 @@ When using token authentication with MIN/TLX inverters, you get:
 - AC charge enable/disable
 
 All control entities provide real-time feedback and proper error handling.
+
+### Enhanced TLX Sensor Coverage (v1.4.6)
+
+Added 14 new sensors for power and energy monitoring:
+
+**Power Flow Monitoring**:
+
+- Solar generation today
+- Local load power, import power, export power
+- System power, self power
+
+**Energy Accounting**:
+
+- System production (today/total)
+- Self-consumption (today/total)
+- Grid import/export (today/total)
+- Battery charging from grid (today/total)
+
+These sensors provide complete visibility into energy flows and system performance for TLX/MIN inverters.
 
 ## Installation
 
