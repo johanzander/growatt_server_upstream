@@ -1,24 +1,25 @@
+# Service definitions for Growatt Server integration
+# Schemas are defined in code (__init__.py) using selectors
+
 update_min_time_segment:
-  name: Update MIN/TLX inverter time segment
+  name: Update MIN/TLX time segment
   description: Update a time-of-use (TOU) segment for MIN/TLX inverters
-  target:
-    device:
-      integration: growatt_server
   fields:
     segment_id:
       name: Segment ID
       description: Time segment ID (1-9)
       required: true
+      example: 1
       selector:
         number:
           min: 1
           max: 9
           mode: box
-      example: 1
     batt_mode:
       name: Battery mode
       description: Battery operation mode for this time segment
       required: true
+      example: "load-first"
       selector:
         select:
           options:
@@ -28,33 +29,28 @@ update_min_time_segment:
               value: "battery-first"
             - label: "Grid First"
               value: "grid-first"
-      example: "load-first"
     start_time:
       name: Start time
       description: Start time for the segment (HH:MM format)
       required: true
+      example: "08:00"
       selector:
         time:
-      example: "08:00"
     end_time:
       name: End time
       description: End time for the segment (HH:MM format)
       required: true
+      example: "12:00"
       selector:
         time:
-      example: "12:00"
     enabled:
       name: Enabled
       description: Whether this time segment is active
       required: true
+      example: true
       selector:
         boolean:
-      example: true
 
 read_min_time_segments:
-  name: Read MIN/TLX inverter time segments
+  name: Read MIN/TLX time segments
   description: Read all time-of-use (TOU) segments from a MIN/TLX inverter
-  target:
-    device:
-      integration: growatt_server
-  fields: {}

@@ -147,7 +147,7 @@ async def async_setup_entry(
 class GrowattSensor(CoordinatorEntity[GrowattCoordinator], SensorEntity):
     """Representation of a Growatt Sensor."""
 
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
     entity_description: GrowattSensorEntityDescription
 
     def __init__(

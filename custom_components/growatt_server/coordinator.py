@@ -72,6 +72,36 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry=config_entry,
         )
 
+    def _calculate_epv_today(self, data: dict) -> dict:
+        """Calculate total solar generation today from individual PV inputs.
+
+        Args:
+            data: Device data dictionary
+
+        Returns:
+            Updated data dictionary with epvToday calculated if needed
+        """
+        if "epvToday" not in data and any(
+            key in data for key in ("epv1Today", "epv2Today", "epv3Today", "epv4Today")
+        ):
+            total_pv_today = 0.0
+            for i in range(1, 5):
+                pv_key = f"epv{i}Today"
+                if pv_key in data and data[pv_key] not in (None, ""):
+                    try:
+                        total_pv_today += float(data[pv_key])
+                    except (ValueError, TypeError):
+                        _LOGGER.debug("Could not convert %s to float: %s", pv_key, data[pv_key])
+
+            data["epvToday"] = total_pv_today
+            _LOGGER.debug(
+                "Calculated epvToday = %s from sum of individual PV inputs for device %s",
+                total_pv_today,
+                self.device_id,
+            )
+
+        return data
+
     def _sync_update_data(self) -> dict[str, Any]:
         """Update data via library synchronously."""
         _LOGGER.debug("Updating data for %s (%s)", self.device_id, self.device_type)
@@ -112,6 +142,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 min_settings = self.api.min_settings(self.device_id)
                 min_energy = self.api.min_energy(self.device_id)
                 min_info = {**min_details, **min_settings, **min_energy}
+
+                # Calculate epvToday if not present
+                min_info = self._calculate_epv_today(min_info)
+
                 self.data = min_info
                 _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
             except growattServer.GrowattV1ApiError as err:
@@ -122,6 +156,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
             self.data = tlx_info["data"]
+
+            # Calculate epvToday if not present
+            self.data = self._calculate_epv_today(self.data)
+
             _LOGGER.debug("tlx_info for device %s: %r", self.device_id, tlx_info)
         elif self.device_type == "storage":
             storage_info_detail = self.api.storage_params(self.device_id)

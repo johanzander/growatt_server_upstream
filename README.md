@@ -9,7 +9,7 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
 
-## Features (v1.4.1)
+## Features (v1.4.6)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 

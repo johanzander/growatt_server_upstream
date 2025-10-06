@@ -232,6 +232,12 @@
       "tlx_energy_total": {
         "name": "Lifetime energy output"
       },
+      "tlx_solar_generation_today": {
+        "name": "Solar production today"
+      },
+      "tlx_solar_generation_total": {
+        "name": "Lifetime total solar energy"
+      },
       "total_energy_today": {
         "name": "Energy today"
       },
@@ -247,21 +253,21 @@
     },
     "number": {
       "charge_power": {
-        "name": "Charge power"
+        "name": "Charge Power Rate"
       },
       "charge_stop_soc": {
-        "name": "Charge stop SOC"
+        "name": "Charge Stop SOC"
       },
       "discharge_power": {
-        "name": "Discharge power"
+        "name": "Discharge Power Rate"
       },
       "discharge_stop_soc": {
-        "name": "Discharge stop SOC"
+        "name": "Discharge Stop SOC"
       }
     },
     "switch": {
       "ac_charge": {
-        "name": "AC charge"
+        "name": "Charge from Grid"
       }
     }
   }

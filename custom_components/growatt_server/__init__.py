@@ -6,11 +6,13 @@ import logging
 
 import growattServer
 import requests
+import voluptuous as vol
 
 from homeassistant.components import persistent_notification
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, HomeAssistantError
+from homeassistant.helpers import config_validation as cv, selector
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -444,14 +446,24 @@ async def _async_register_services(
 ) -> None:
     """Register services for MIN/TLX devices."""
     # Only register services if we have MIN or TLX devices
+    _LOGGER.debug(
+        "Checking for MIN/TLX devices to register services. Devices: %s",
+        [(coord.device_id, coord.device_type, coord.api_version) for coord in device_coordinators.values()]
+    )
+
     has_min_tlx = any(
         coord.device_type in ("min", "tlx") and coord.api_version == "v1"
         for coord in device_coordinators.values()
     )
 
     if not has_min_tlx:
-        _LOGGER.debug("No MIN/TLX devices found, skipping service registration")
+        _LOGGER.warning(
+            "No MIN/TLX devices with V1 API found, skipping TOU service registration. "
+            "Services require MIN/TLX devices with token authentication."
+        )
         return
+
+    _LOGGER.info("Found MIN/TLX devices with V1 API, registering TOU services")
 
     async def handle_update_min_time_segment(call: ServiceCall) -> None:
         """Handle update_min_time_segment service call."""
@@ -549,12 +561,34 @@ async def _async_register_services(
                 f"Error reading MIN/TLX time segments: {err}"
             ) from err
 
+    # Define service fields with selectors for proper UI
+    update_time_segment_fields = {
+        vol.Required("segment_id"): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1, max=9, mode=selector.NumberSelectorMode.BOX
+            )
+        ),
+        vol.Required("batt_mode"): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value="load-first", label="Load First"),
+                    selector.SelectOptionDict(value="battery-first", label="Battery First"),
+                    selector.SelectOptionDict(value="grid-first", label="Grid First"),
+                ]
+            )
+        ),
+        vol.Required("start_time"): selector.TimeSelector(),
+        vol.Required("end_time"): selector.TimeSelector(),
+        vol.Required("enabled"): selector.BooleanSelector(),
+    }
+
     # Register the services
     if not hass.services.has_service(DOMAIN, "update_min_time_segment"):
         hass.services.async_register(
             DOMAIN,
             "update_min_time_segment",
             handle_update_min_time_segment,
+            schema=vol.Schema(update_time_segment_fields),
         )
         _LOGGER.info("Registered service: update_min_time_segment")
 
