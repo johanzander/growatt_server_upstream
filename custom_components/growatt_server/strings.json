@@ -12,10 +12,10 @@
     "step": {
       "user": {
         "title": "Choose authentication method",
-        "description": "Note: API Token authentication is currently only supported for MIN/TLX devices. For other device types, please use Username & Password authentication.",
+        "description": "Note: API Token authentication supports MIN/SPH inverters. For other device types, please use Username & Password authentication.",
         "menu_options": {
           "password_auth": "Username & Password",
-          "token_auth": "API Token (MIN/TLX only)"
+          "token_auth": "API Token (MIN/SPH)"
         }
       },
       "password_auth": {
@@ -28,7 +28,7 @@
       },
       "token_auth": {
         "title": "Enter your API token",
-        "description": "Token authentication is only supported for MIN/TLX devices. For other device types, please use username/password authentication.",
+        "description": "Token authentication supports MIN/SPH inverters. For other device types, please use username/password authentication.",
         "data": {
           "token": "API Token"
         }
@@ -43,9 +43,9 @@
   },
   "title": "Growatt Server",
   "services": {
-    "update_min_time_segment": {
-      "name": "Update MIN/TLX time segment",
-      "description": "Update a time-of-use (TOU) segment for MIN/TLX inverters",
+    "update_time_segment": {
+      "name": "Update time segment",
+      "description": "Update a time-of-use (TOU) segment for MIN/SPH inverters",
       "fields": {
         "segment_id": {
           "name": "Segment ID",
@@ -69,9 +69,9 @@
         }
       }
     },
-    "read_min_time_segments": {
-      "name": "Read MIN/TLX time segments",
-      "description": "Read all time-of-use (TOU) segments from a MIN/TLX inverter"
+    "read_time_segments": {
+      "name": "Read time segments",
+      "description": "Read all time-of-use (TOU) segments from a MIN/SPH inverter"
     }
   },
   "entity": {
@@ -540,7 +540,6 @@
       }
     },
     "number": {
-      },
       "charge_power": {
         "name": "Charge Power Rate"
       },
@@ -560,4 +559,4 @@
       }
     }
   }
-
+}

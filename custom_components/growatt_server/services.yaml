@@ -1,9 +1,9 @@
 # Service definitions for Growatt Server integration
 # Schemas are defined in code (__init__.py) using selectors
 
-update_min_time_segment:
-  name: Update MIN/TLX time segment
-  description: Update a time-of-use (TOU) segment for MIN/TLX inverters
+update_time_segment:
+  name: Update time segment
+  description: Update a time-of-use (TOU) segment for inverters (MIN, TLX, MIX)
   fields:
     segment_id:
       name: Segment ID
@@ -51,6 +51,6 @@ update_min_time_segment:
       selector:
         boolean:
 
-read_min_time_segments:
-  name: Read MIN/TLX time segments
-  description: Read all time-of-use (TOU) segments from a MIN/TLX inverter
+read_time_segments:
+  name: Read time segments
+  description: Read all time-of-use (TOU) segments from an inverter (MIN, TLX, MIX)

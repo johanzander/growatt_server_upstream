@@ -151,10 +151,11 @@ async def async_setup_entry(
 
     entities: list[GrowattNumber] = []
 
-    # Add number entities for each MIN device (only supported with V1 API)
+    # Add number entities for each MIN/SPH device (only supported with V1 API)
+    # MIN inverters map to "tlx" device type, SPH inverters map to "mix" device type
     for device_coordinator in runtime_data.devices.values():
         if (
-            device_coordinator.device_type == "min"
+            device_coordinator.device_type in ("tlx", "mix")
             and device_coordinator.api_version == "v1"
         ):
             entities.extend(
