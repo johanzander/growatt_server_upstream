@@ -26,6 +26,7 @@ SCAN_INTERVAL = datetime.timedelta(minutes=5)
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator to manage Growatt data fetching."""
 
@@ -61,7 +62,8 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self.api.server_url = self.url
         else:
-            raise ValueError(f"Unknown API version: {self.api_version}")
+            msg = f"Unknown API version: {self.api_version}"
+            raise ValueError(msg)
 
         super().__init__(
             hass,
@@ -120,10 +122,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.data = min_info
                 _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
             except growattServer.GrowattV1ApiError as err:
-                _LOGGER.error(
-                    "Error fetching min device data for %s: %s", self.device_id, err
+                _LOGGER.exception(
+                    "Error fetching min device data for %s", self.device_id
                 )
-                raise UpdateFailed(f"Error fetching min device data: {err}") from err
+                msg = f"Error fetching min device data: {err}"
+                raise UpdateFailed(msg) from err
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
             self.data = tlx_info["data"]
@@ -141,28 +144,43 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.api_version == "v1":
                 # Open API V1: min device
                 try:
-                    mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
-                    mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
+                    mix_details = self.api.device_details(
+                        self.device_id, DeviceType.SPH_MIX
+                    )
+                    mix_energy = self.api.device_energy(
+                        self.device_id, DeviceType.SPH_MIX
+                    )
 
                     date_str = mix_energy.get("time")
-                    date_format = '%Y-%m-%d %H:%M:%S'
-                    naive_dt = datetime.datetime.strptime(date_str, date_format)
+                    date_format = "%Y-%m-%d %H:%M:%S"
                     tz = dt_util.get_default_time_zone()
-                    aware_dt = naive_dt.replace(tzinfo=tz)
-                    mix_details["lastdataupdate"] = aware_dt
+                    if date_str is not None:
+                        naive_dt = datetime.datetime.strptime(date_str, date_format)
+                        aware_dt = naive_dt.replace(tzinfo=tz)
+                        mix_details["lastdataupdate"] = aware_dt
+                    else:
+                        mix_details["lastdataupdate"] = None
 
-                    mix_energy["ppv1"]= mix_energy.get("ppv1", 0) / 1000  # W to kW
-                    mix_energy["ppv2"]= mix_energy.get("ppv2", 0) / 1000  # W to kW
+                    mix_energy["ppv1"] = mix_energy.get("ppv1", 0) / 1000  # W to kW
+                    mix_energy["ppv2"] = mix_energy.get("ppv2", 0) / 1000  # W to kW
                     mix_energy["ppv"] = mix_energy.get("ppv", 0) / 1000  # W to kW
+                    mix_energy["accdischargePowerKW"] = (
+                        mix_energy.get("accdischargePower", 0) / 1000
+                    )  # W to kW
 
                     mix_info = {**mix_details, **mix_energy}
                     self.data = mix_info
-                    _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
-                except growattServer.GrowattV1ApiError as err:
-                    _LOGGER.error(
-                        "Error fetching mix device data for %s: %s", self.device_id, err
+                    _LOGGER.debug(
+                        "mix_info for device %s: %r", self.device_id, mix_info
                     )
-                    raise UpdateFailed(f"Error fetching {self.device_type} device data: {err}") from err
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.exception(
+                        "Error fetching mix device data for %s", self.device_id
+                    )
+                    msg = f"Error fetching {self.device_type} device data: {err}"
+                    raise UpdateFailed(
+                        msg
+                    ) from err
             else:
                 mix_info = self.api.mix_info(self.device_id)
                 mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
@@ -187,7 +205,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Dashboard data for mix system
                 dashboard_data = self.api.dashboard_data(self.plant_id)
                 dashboard_values_for_mix = {
-                    "etouser_combined": float(dashboard_data["etouser"].replace("kWh", ""))
+                    "etouser_combined": float(
+                        dashboard_data["etouser"].replace("kWh", "")
+                    )
                 }
                 self.data = {
                     **mix_info,
@@ -201,7 +221,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_id,
                 self.device_type,
             )
-
 
         return self.data
 

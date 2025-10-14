@@ -122,7 +122,7 @@ def get_device_list_v1(
         device_type = device.device_type
         device_sn = device.device_sn
         # Use integer values directly if MIX and MIN are not defined in DeviceType
-        if device_type == growattServer.DeviceType.MIX_SPH:
+        if device_type == growattServer.DeviceType.SPH_MIX:
             supported_devices.append(
                 {
                     "deviceSn": device_sn,
@@ -139,7 +139,7 @@ def get_device_list_v1(
 
     for device in devices:
         if device.device_type not in (
-            growattServer.DeviceType.MIX_SPH,
+            growattServer.DeviceType.SPH_MIX,
             growattServer.DeviceType.MIN_TLX,
         ):
             _LOGGER.warning(
