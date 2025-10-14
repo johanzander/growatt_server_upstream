@@ -69,7 +69,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_battery_discharge_w",
         translation_key="mix_battery_discharge_w",
-        api_key=["pDischarge1", "bdc1DischargePower"],
+        api_key=["pDischarge1", "bdc1DischargePower", "accdischargePower"],
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
     ),
@@ -164,7 +164,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_export_to_grid",
         translation_key="mix_export_to_grid",
-        api_key=["pactogrid", "pacToGrid"],
+        api_key=["pactogrid", "pacToGridTotal"],
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),
@@ -178,7 +178,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_battery_discharge_kw",
         translation_key="mix_battery_discharge_kw",
-        api_key=["pdisCharge1", "bdc1DischargePower"],
+        api_key=["pdisCharge1", "bdc1DischargePower", "accdischargePowerKW"],
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
     ),
@@ -193,7 +193,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_system_production_today",
         translation_key="mix_system_production_today",
-        api_key="eCharge",
+        api_key=["eCharge", "esystemtoday"],
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
     ),
@@ -207,7 +207,7 @@ MIX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_self_consumption_today",
         translation_key="mix_self_consumption_today",
-        api_key=["eChargeToday1", "eselfToday"],
+        api_key=["eChargeToday1", "eselfToday", "eselftoday"],
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
     ),
