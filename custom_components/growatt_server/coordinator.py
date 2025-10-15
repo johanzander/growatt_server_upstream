@@ -296,10 +296,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update a value in coordinator data after successful write."""
         self.data[entity_description.api_key] = value
 
-    async def update_min_time_segment(
+    async def update_time_segment(
         self, segment_id: int, batt_mode: int, start_time, end_time, enabled: bool
     ) -> None:
-        """Update a MIN/TLX inverter time segment.
+        """Update a time segment.
 
         Args:
             segment_id: Time segment ID (1-9)
@@ -353,8 +353,8 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Time segment updates require token authentication"
             )
 
-    async def read_min_time_segments(self) -> list[dict]:
-        """Read time segments from a MIN/TLX inverter.
+    async def read_time_segments(self) -> list[dict]:
+        """Read time segments from an inverter.
 
         Returns:
             List of dictionaries containing segment information

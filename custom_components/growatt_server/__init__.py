@@ -445,46 +445,63 @@ async def _async_register_services(
     device_coordinators: dict,
 ) -> None:
     """Register services for MIN/TLX devices."""
-    # Only register services if we have MIN or TLX devices
-    _LOGGER.debug(
-        "Checking for MIN/TLX devices to register services. Devices: %s",
-        [(coord.device_id, coord.device_type, coord.api_version) for coord in device_coordinators.values()]
-    )
+    from datetime import datetime
 
-    has_min_tlx = any(
-        coord.device_type in ("min", "tlx") and coord.api_version == "v1"
+    # Get all MIN coordinators with V1 API - single source of truth
+    min_coordinators = {
+        coord.device_id: coord
         for coord in device_coordinators.values()
-    )
+        if coord.device_type == "min" and coord.api_version == "v1"
+    }
 
-    if not has_min_tlx:
-        _LOGGER.warning(
-            "No MIN/TLX devices with V1 API found, skipping TOU service registration. "
-            "Services require MIN/TLX devices with token authentication."
+    if not min_coordinators:
+        _LOGGER.debug(
+            "No MIN devices with V1 API found, skipping TOU service registration. "
+            "Services require MIN devices with token authentication"
         )
         return
 
-    _LOGGER.info("Found MIN/TLX devices with V1 API, registering TOU services")
+    _LOGGER.info(
+        "Found %d MIN device(s) with V1 API, registering TOU services",
+        len(min_coordinators),
+    )
 
-    async def handle_update_min_time_segment(call: ServiceCall) -> None:
-        """Handle update_min_time_segment service call."""
-        from datetime import datetime
+    def get_coordinator(device_id: str | None = None) -> GrowattCoordinator:
+        """Get coordinator by device_id with consistent behavior."""
+        if device_id is None:
+            if len(min_coordinators) == 1:
+                # Only one device - return it
+                return next(iter(min_coordinators.values()))
+            # Multiple devices - require explicit selection
+            device_list = ", ".join(min_coordinators.keys())
+            raise HomeAssistantError(
+                f"Multiple MIN devices available ({device_list}). "
+                "Please specify device_id parameter."
+            )
 
-        segment_id = call.data["segment_id"]
+        # Explicit device_id provided
+        if device_id not in min_coordinators:
+            raise HomeAssistantError(f"MIN device '{device_id}' not found")
+
+        return min_coordinators[device_id]
+
+    async def handle_update_time_segment(call: ServiceCall) -> None:
+        """Handle update_time_segment service call."""
+        segment_id = int(call.data["segment_id"])
         batt_mode_str = str(call.data["batt_mode"])
         start_time_str = call.data["start_time"]
         end_time_str = call.data["end_time"]
         enabled = call.data["enabled"]
-
-        if not (1 <= segment_id <= 9):
-            raise HomeAssistantError("segment_id must be between 1 and 9")
+        device_id = call.data.get("device_id")
 
         _LOGGER.debug(
-            "handle_update_min_time_segment: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s",
+            "handle_update_time_segment: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s, device_id=%s",
             segment_id,
             batt_mode_str,
             start_time_str,
             end_time_str,
             enabled,
+            device_id,
         )
 
         # Convert batt_mode string to integer
@@ -503,24 +520,11 @@ async def _async_register_services(
                 "start_time and end_time must be in HH:MM format"
             ) from err
 
-        if not isinstance(enabled, bool):
-            raise HomeAssistantError("enabled must be a boolean value")
-
-        # Find the first MIN/TLX coordinator to use
-        coordinator = next(
-            (
-                coord
-                for coord in device_coordinators.values()
-                if coord.device_type in ("min", "tlx") and coord.api_version == "v1"
-            ),
-            None,
-        )
-
-        if coordinator is None:
-            raise HomeAssistantError("No MIN/TLX device found with V1 API")
+        # Get the appropriate MIN coordinator
+        coordinator = get_coordinator(device_id)
 
         try:
-            await coordinator.update_min_time_segment(
+            await coordinator.update_time_segment(
                 segment_id,
                 batt_mode,
                 start_time,
@@ -529,40 +533,40 @@ async def _async_register_services(
             )
         except Exception as err:
             _LOGGER.error(
-                "Error updating MIN/TLX time segment %d: %s",
+                "Error updating time segment %d: %s",
                 segment_id,
                 err,
             )
             raise HomeAssistantError(
-                f"Error updating MIN/TLX time segment {segment_id}: {err}"
+                f"Error updating time segment {segment_id}: {err}"
             ) from err
 
-    async def handle_read_min_time_segments(call: ServiceCall) -> dict:
-        """Handle read_min_time_segments service call."""
-        # Find the first MIN/TLX coordinator to use
-        coordinator = next(
-            (
-                coord
-                for coord in device_coordinators.values()
-                if coord.device_type in ("min", "tlx") and coord.api_version == "v1"
-            ),
-            None,
-        )
-
-        if coordinator is None:
-            raise HomeAssistantError("No MIN/TLX device found with V1 API")
+    async def handle_read_time_segments(call: ServiceCall) -> dict:
+        """Handle read_time_segments service call."""
+        # Get the appropriate MIN coordinator
+        coordinator = get_coordinator(call.data.get("device_id"))
 
         try:
-            time_segments = await coordinator.read_min_time_segments()
-            return {"time_segments": time_segments}
+            time_segments = await coordinator.read_time_segments()
         except Exception as err:
-            _LOGGER.error("Error reading MIN/TLX time segments: %s", err)
-            raise HomeAssistantError(
-                f"Error reading MIN/TLX time segments: {err}"
-            ) from err
+            _LOGGER.error("Error reading time segments: %s", err)
+            raise HomeAssistantError(f"Error reading time segments: {err}") from err
+        else:
+            return {"time_segments": time_segments}
 
-    # Define service fields with selectors for proper UI
-    update_time_segment_fields = {
+    # Create device selector schema helper
+    device_selector_fields = {}
+    if len(min_coordinators) > 1:
+        device_options = [
+            selector.SelectOptionDict(value=device_id, label=f"MIN Device {device_id}")
+            for device_id in min_coordinators
+        ]
+        device_selector_fields[vol.Required("device_id")] = selector.SelectSelector(
+            selector.SelectSelectorConfig(options=device_options)
+        )
+
+    # Define service schemas
+    update_schema_fields = {
         vol.Required("segment_id"): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=1, max=9, mode=selector.NumberSelectorMode.BOX
@@ -572,7 +576,9 @@ async def _async_register_services(
             selector.SelectSelectorConfig(
                 options=[
                     selector.SelectOptionDict(value="load-first", label="Load First"),
-                    selector.SelectOptionDict(value="battery-first", label="Battery First"),
+                    selector.SelectOptionDict(
+                        value="battery-first", label="Battery First"
+                    ),
                     selector.SelectOptionDict(value="grid-first", label="Grid First"),
                 ]
             )
@@ -580,26 +586,38 @@ async def _async_register_services(
         vol.Required("start_time"): selector.TimeSelector(),
         vol.Required("end_time"): selector.TimeSelector(),
         vol.Required("enabled"): selector.BooleanSelector(),
+        **device_selector_fields,
     }
 
-    # Register the services
-    if not hass.services.has_service(DOMAIN, "update_min_time_segment"):
-        hass.services.async_register(
-            DOMAIN,
-            "update_min_time_segment",
-            handle_update_min_time_segment,
-            schema=vol.Schema(update_time_segment_fields),
-        )
-        _LOGGER.info("Registered service: update_min_time_segment")
+    read_schema_fields = {**device_selector_fields}
 
-    if not hass.services.has_service(DOMAIN, "read_min_time_segments"):
-        hass.services.async_register(
-            DOMAIN,
-            "read_min_time_segments",
-            handle_read_min_time_segments,
-            supports_response=SupportsResponse.ONLY,
-        )
-        _LOGGER.info("Registered service: read_min_time_segments")
+    # Register services
+    services_to_register = [
+        (
+            "update_time_segment",
+            handle_update_time_segment,
+            update_schema_fields,
+        ),
+        ("read_time_segments", handle_read_time_segments, read_schema_fields),
+    ]
+
+    for service_name, handler, schema_fields in services_to_register:
+        if not hass.services.has_service(DOMAIN, service_name):
+            schema = vol.Schema(schema_fields) if schema_fields else None
+            supports_response = (
+                SupportsResponse.ONLY
+                if service_name == "read_time_segments"
+                else SupportsResponse.NONE
+            )
+
+            hass.services.async_register(
+                DOMAIN,
+                service_name,
+                handler,
+                schema=schema,
+                supports_response=supports_response,
+            )
+            _LOGGER.info("Registered service: %s", service_name)
 
 
 async def async_unload_entry(

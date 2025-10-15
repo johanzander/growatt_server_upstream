@@ -1,0 +1,10 @@
+{
+  "services": {
+    "update_time_segment": {
+      "service": "mdi:clock-edit"
+    },
+    "read_time_segments": {
+      "service": "mdi:clock-outline"
+    }
+  }
+}
