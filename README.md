@@ -7,9 +7,9 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 ## About
 
-This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core.
+This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core. From version 1.5.0 it should be compatible with the [Growatt BESS (Battery Energy Storage System) Manager][bess]
 
-## Features (v1.4.6)
+## Features (v1.5.0)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 
@@ -17,15 +17,15 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 1. `manifest.json` updated for custom component distribution
 2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX devices
-3. [MIN/TLX inverter control][pr-153468] - Number and switch entities for controlling inverter settings
-4. Read / write Time Of Use (TOU) settings using service calls:
-  `growattserver.read_min_time_segments,
-  growattserver.update_min_time_segment`
-5. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
-6. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
-7. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
-8. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
+3. [MIN inverter control][pr-153468] - Number and switch entities for controlling inverter settings
+4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
+5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
+6. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
+7. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
 monitoring
+8. Proper implementation of read / write Time Of Use (TOU) settings using service calls:
+  `growattserver.read_time_segments,
+  growattserver.update_time_segment`
 
 ### MIN/TLX Inverter Control Features (V1 API)
 
@@ -134,3 +134,5 @@ After adding this configuration:
 [pr-149783]: https://github.com/home-assistant/core/pull/149783
 [pr-153468]: https://github.com/home-assistant/core/pull/153468
 [issue-150732]: https://github.com/home-assistant/core/issues/150732
+[bess]: https://github.com/johanzander/bess-manager
+
