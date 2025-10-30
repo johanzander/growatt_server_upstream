@@ -2,10 +2,12 @@
   "config": {
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "no_plants": "No plants have been found on this account"
     },
     "error": {
-      "invalid_auth": "Authentication failed. Please check your credentials and try again."
+      "invalid_auth": "Authentication failed. Please check your credentials and try again.",
+      "cannot_connect": "Cannot connect to Growatt servers. Please check your internet connection and try again."
     },
     "step": {
       "user": {
@@ -40,6 +42,48 @@
     }
   },
   "title": "Growatt Server",
+  "services": {
+    "update_time_segment": {
+      "name": "Update time segment",
+      "description": "Update a time-of-use (TOU) segment for supported inverters.",
+      "fields": {
+        "segment_id": {
+          "name": "Segment ID",
+          "description": "Time segment ID (1-9)."
+        },
+        "batt_mode": {
+          "name": "Battery mode",
+          "description": "Battery operation mode for this time segment."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "Start time for the segment (HH:MM format)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "End time for the segment (HH:MM format)."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether this time segment is active."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID (only required when multiple devices exist)."
+        }
+      }
+    },
+    "read_time_segments": {
+      "name": "Read time segments",
+      "description": "Read all time-of-use (TOU) segments from a supported inverter.",
+      "fields": {
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID (only required when multiple devices exist)."
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "inverter_energy_today": {
@@ -360,6 +404,9 @@
       "tlx_wattage_input_4": {
         "name": "Input 4 wattage"
       },
+      "tlx_solar_generation_today": {
+        "name": "Solar production today"
+      },
       "tlx_solar_generation_total": {
         "name": "Lifetime total solar energy"
       },
@@ -438,6 +485,48 @@
       "mix_load_consumption_total": {
         "name": "Lifetime total load consumption"
       },
+      "tlx_pac_to_local_load": {
+        "name": "Local load Power"
+      },
+      "tlx_pac_to_user_total": {
+        "name": "Import Power"
+      },
+      "tlx_pac_to_grid_total": {
+        "name": "Export Power"
+      },
+      "tlx_system_production_today": {
+        "name": "System production today"
+      },
+      "tlx_system_production_total": {
+        "name": "Lifetime system production"
+      },
+      "tlx_self_consumption_today": {
+        "name": "Self consumption today"
+      },
+      "tlx_self_consumption_total": {
+        "name": "Lifetime self consumption"
+      },
+      "tlx_import_from_grid_today": {
+        "name": "Import from grid today"
+      },
+      "tlx_import_from_grid_total": {
+        "name": "Lifetime import from grid"
+      },
+      "tlx_batteries_charged_from_grid_today": {
+        "name": "Batteries charged from grid today"
+      },
+      "tlx_batteries_charged_from_grid_total": {
+        "name": "Lifetime batteries charged from grid"
+      },
+      "tlx_p_system": {
+        "name": "System Power"
+      },
+      "tlx_p_self": {
+        "name": "Self Power"
+      },
+      "tlx_pac": {
+        "name": "AC Power"
+      },
       "tlx_statement_of_charge": {
         "name": "Statement of charge (SoC)"
       },
@@ -459,6 +548,26 @@
       "total_maximum_output": {
         "name": "Maximum power"
       }
+    },
+    "number": {
+      },
+      "charge_power": {
+        "name": "Charge Power Rate"
+      },
+      "charge_stop_soc": {
+        "name": "Charge Stop SOC"
+      },
+      "discharge_power": {
+        "name": "Discharge Power Rate"
+      },
+      "discharge_stop_soc": {
+        "name": "Discharge Stop SOC"
+      }
+    },
+    "switch": {
+      "ac_charge": {
+        "name": "Charge from Grid"
+      }
     }
   }
-}
+
