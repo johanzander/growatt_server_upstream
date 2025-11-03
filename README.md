@@ -9,59 +9,51 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core. From version 1.5.0 it should be compatible with the [Growatt BESS (Battery Energy Storage System) Manager][bess]
 
-## Features (v1.5.0)
+## Features (v2.0.0)
 
-**Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
+**Base Version**: Home Assistant Core (latest core/dev branch as of November 3rd 2024)
 
-**Changes from Base Version**:
+**New Features in v2.0.0**:
 
-1. `manifest.json` updated for custom component distribution
-2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX devices
-3. [MIN inverter control][pr-153468] - Number and switch entities for controlling inverter settings
-4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
-5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
-6. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
-7. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
-monitoring
-8. Proper implementation of read / write Time Of Use (TOU) settings using service calls:
-  `growattserver.read_time_segments,
-  growattserver.update_time_segment`
+1. **GraemeDBlue Library Integration** - Uses enhanced PyPi_GrowattServer library with improved API handling
+2. **Advanced Rate Limiting** - 5-minute API throttling with automatic retry and user notifications
+3. **Time-of-Use (TOU) Services** - Complete service implementation for MIN device battery management:
+   - `growatt_server.read_time_segments` - Read current TOU settings
+   - `growatt_server.update_time_segment` - Update individual time segments
+4. **Enhanced Error Handling** - Persistent notifications during API throttling periods
 
-### MIN/TLX Inverter Control Features (V1 API)
+### Time-of-Use (TOU) Services (v2.0.0)
 
-When using token authentication with MIN/TLX inverters, you get:
+**Available Services**:
 
-**Number Entities** (0-100%):
+- `growatt_server.read_time_segments` - Read current TOU settings from device
+- `growatt_server.update_time_segment` - Update individual time segment settings
 
-- Charge power
-- Charge stop SOC
-- Discharge power
-- Discharge stop SOC
+**Battery Operation Modes** (used in time segments):
 
-**Switch Entities**:
+- `load_first` - Prioritize local load consumption
+- `battery_first` - Prioritize battery charging  
+- `grid_first` - Prioritize grid power usage
 
-- AC charge enable/disable
+**Example Service Calls**:
 
-All control entities provide real-time feedback and proper error handling.
+```yaml
+# Read current TOU settings
+service: growatt_server.read_time_segments
+target:
+  device_id: your_device_id
 
-### Enhanced TLX Sensor Coverage (v1.4.6)
-
-Added 14 new sensors for power and energy monitoring:
-
-**Power Flow Monitoring**:
-
-- Solar generation today
-- Local load power, import power, export power
-- System power, self power
-
-**Energy Accounting**:
-
-- System production (today/total)
-- Self-consumption (today/total)
-- Grid import/export (today/total)
-- Battery charging from grid (today/total)
-
-These sensors provide complete visibility into energy flows and system performance for TLX/MIN inverters.
+# Update time segment 1 (08:00-12:00) to battery first mode
+service: growatt_server.update_time_segment
+target:
+  device_id: your_device_id
+data:
+  segment_id: 1
+  batt_mode: "battery_first"
+  start_time: "08:00"
+  end_time: "12:00"
+  enabled: true
+```
 
 ## Installation
 
@@ -80,22 +72,38 @@ These sensors provide complete visibility into energy flows and system performan
 
 #### Step 2: Download the Integration
 
-7. Search for "Growatt Server Upstream" in HACS
-8. Click on it and select "Download"
-9. Restart Home Assistant
+1. Search for "Growatt Server Upstream" in HACS
+2. Click on it and select "Download"
+3. Restart Home Assistant
 
 #### Step 3: Configure the Integration
 
-10. Go to Settings → Devices & Services
-11. Click "Add Integration"
-12. Search for "Growatt Server Upstream"
-13. Follow the configuration steps
+1. Go to Settings → Devices & Services
+2. Click "Add Integration"
+3. Search for "Growatt Server Upstream"
+4. Follow the configuration steps
 
 ### Manual Installation
 
 1. Download the `custom_components` folder
 2. Copy to your Home Assistant `config/custom_components/` directory
 3. Restart Home Assistant
+
+## Rate Limiting Protection
+
+v2.0.0 includes intelligent API rate limiting to prevent account lockouts:
+
+- **5-minute throttling** between API calls that could trigger account locks
+- **Automatic retry** - Home Assistant will retry automatically when safe
+- **User notifications** - Persistent notifications show countdown timer during throttling
+- **Timezone-aware** - Throttle state persists correctly across HA restarts
+- **No manual intervention** - Setup continues automatically after throttle period
+
+When throttled, you'll see a notification like:
+
+> 🛡️ **Growatt API Rate Limited - Auto-retry in 3m 45s**
+>
+> Setup will continue automatically - no restart needed.
 
 ## Contributing
 
@@ -131,8 +139,5 @@ After adding this configuration:
 [issues]: https://github.com/johanzander/growatt_server_upstream/issues
 [releases-shield]: https://img.shields.io/github/release/johanzander/growatt_server_upstream.svg
 [releases]: https://github.com/johanzander/growatt_server_upstream/releases
-[pr-149783]: https://github.com/home-assistant/core/pull/149783
-[pr-153468]: https://github.com/home-assistant/core/pull/153468
-[issue-150732]: https://github.com/home-assistant/core/issues/150732
 [bess]: https://github.com/johanzander/bess-manager
 
