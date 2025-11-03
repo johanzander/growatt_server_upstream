@@ -162,9 +162,6 @@ class GrowattServerConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="token_auth",
             data_schema=data_schema,
             errors=errors,
-            description_placeholders={
-                "note": "Token authentication only supports MIN/TLX devices. For other device types, please use username/password authentication."
-            },
         )
 
     async def async_step_plant(
@@ -177,12 +174,10 @@ class GrowattServerConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_abort(reason=ABORT_NO_PLANTS)
 
             # Create dictionary of plant_id -> name
-            plant_dict = {}
-            for plant in self.plants:
-                plant_id = str(plant.get("plant_id", ""))
-                plant_name = plant.get("name", "Unknown Plant")
-                if plant_id:
-                    plant_dict[plant_id] = plant_name
+            plant_dict = {
+                str(plant["plant_id"]): plant.get("name", "Unknown Plant")
+                for plant in self.plants
+            }
 
             if user_input is None and len(plant_dict) > 1:
                 data_schema = vol.Schema(

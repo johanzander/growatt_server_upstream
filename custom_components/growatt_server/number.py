@@ -8,7 +8,7 @@ import logging
 from growattServer import GrowattV1ApiError
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -38,8 +38,8 @@ class GrowattNumberEntityDescription(NumberEntityDescription, GrowattRequiredKey
 
 MIN_NUMBER_TYPES: tuple[GrowattNumberEntityDescription, ...] = (
     GrowattNumberEntityDescription(
-        key="charge_power",
-        translation_key="charge_power",
+        key="battery_charge_power_limit",
+        translation_key="battery_charge_power_limit",
         api_key="chargePowerCommand",  # Key returned by V1 API
         write_key="charge_power",  # Key used to write parameter
         native_step=1,
@@ -48,8 +48,8 @@ MIN_NUMBER_TYPES: tuple[GrowattNumberEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
     ),
     GrowattNumberEntityDescription(
-        key="charge_stop_soc",
-        translation_key="charge_stop_soc",
+        key="battery_charge_soc_limit",
+        translation_key="battery_charge_soc_limit",
         api_key="wchargeSOCLowLimit",  # Key returned by V1 API
         write_key="charge_stop_soc",  # Key used to write parameter
         native_step=1,
@@ -58,8 +58,8 @@ MIN_NUMBER_TYPES: tuple[GrowattNumberEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
     ),
     GrowattNumberEntityDescription(
-        key="discharge_power",
-        translation_key="discharge_power",
+        key="battery_discharge_power_limit",
+        translation_key="battery_discharge_power_limit",
         api_key="disChargePowerCommand",  # Key returned by V1 API
         write_key="discharge_power",  # Key used to write parameter
         native_step=1,
@@ -68,8 +68,8 @@ MIN_NUMBER_TYPES: tuple[GrowattNumberEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
     ),
     GrowattNumberEntityDescription(
-        key="discharge_stop_soc",
-        translation_key="discharge_stop_soc",
+        key="battery_discharge_soc_limit",
+        translation_key="battery_discharge_soc_limit",
         api_key="wdisChargeSOCLowLimit",  # Key returned by V1 API
         write_key="discharge_stop_soc",  # Key used to write parameter
         native_step=1,
@@ -80,10 +80,31 @@ MIN_NUMBER_TYPES: tuple[GrowattNumberEntityDescription, ...] = (
 )
 
 
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: GrowattConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up Growatt number entities."""
+    runtime_data = entry.runtime_data
+
+    # Add number entities for each MIN device (only supported with V1 API)
+    async_add_entities(
+        GrowattNumber(device_coordinator, description)
+        for device_coordinator in runtime_data.devices.values()
+        if (
+            device_coordinator.device_type == "min"
+            and device_coordinator.api_version == "v1"
+        )
+        for description in MIN_NUMBER_TYPES
+    )
+
+
 class GrowattNumber(CoordinatorEntity[GrowattCoordinator], NumberEntity):
     """Representation of a Growatt number."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
     entity_description: GrowattNumberEntityDescription
 
     def __init__(
@@ -104,65 +125,38 @@ class GrowattNumber(CoordinatorEntity[GrowattCoordinator], NumberEntity):
     @property
     def native_value(self) -> int | None:
         """Return the current value of the number."""
-        value = self.coordinator.get_value(self.entity_description)
+        value = self.coordinator.data.get(self.entity_description.api_key)
         if value is None:
             return None
         return int(value)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the value of the number."""
-        try:
-            # Use write_key if specified, otherwise fall back to api_key
-            parameter_id = (
-                self.entity_description.write_key or self.entity_description.api_key
-            )
+        # Use write_key if specified, otherwise fall back to api_key
+        parameter_id = (
+            self.entity_description.write_key or self.entity_description.api_key
+        )
+        int_value = int(value)
 
+        try:
             # Use V1 API to write parameter
             await self.hass.async_add_executor_job(
                 self.coordinator.api.min_write_parameter,
                 self.coordinator.device_id,
                 parameter_id,
-                int(value),
+                int_value,
             )
-
-            _LOGGER.debug(
-                "Set parameter %s to %s",
-                parameter_id,
-                value,
-            )
-
-            # If no exception was raised, the write was successful
-            # Update the value in coordinator
-            self.coordinator.set_value(self.entity_description, int(value))
-            self.async_write_ha_state()
-
         except GrowattV1ApiError as e:
-            _LOGGER.error("Error while setting parameter: %s", e)
             raise HomeAssistantError(f"Error while setting parameter: {e}") from e
 
+        # If no exception was raised, the write was successful
+        _LOGGER.debug(
+            "Set parameter %s to %s",
+            parameter_id,
+            value,
+        )
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: GrowattConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
-) -> None:
-    """Set up Growatt number entities."""
-    runtime_data = entry.runtime_data
-
-    entities: list[GrowattNumber] = []
-
-    # Add number entities for each MIN device (only supported with V1 API)
-    for device_coordinator in runtime_data.devices.values():
-        if (
-            device_coordinator.device_type == "min"
-            and device_coordinator.api_version == "v1"
-        ):
-            entities.extend(
-                GrowattNumber(
-                    coordinator=device_coordinator,
-                    description=description,
-                )
-                for description in MIN_NUMBER_TYPES
-            )
-
-    async_add_entities(entities)
+        # Update the value in coordinator data to avoid triggering an immediate
+        # refresh that would hit the API rate limit (5-minute polling interval)
+        self.coordinator.data[self.entity_description.api_key] = int_value
+        self.async_write_ha_state()
