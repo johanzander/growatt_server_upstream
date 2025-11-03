@@ -1,15 +1,18 @@
 """The Growatt server PV inverter sensor integration."""
 
+import asyncio
 from collections.abc import Mapping
 import logging
 
 import growattServer
 
+from homeassistant.components import persistent_notification
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 
 from .const import (
     AUTH_API_TOKEN,
@@ -26,6 +29,7 @@ from .const import (
 from .coordinator import GrowattConfigEntry, GrowattCoordinator
 from .models import GrowattRuntimeData
 from .services import async_register_services
+from .throttle import API_THROTTLE_MINUTES, init_throttle_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,6 +156,9 @@ async def async_setup_entry(
         api_version = "v1"
         token = config[CONF_TOKEN]
         api = growattServer.OpenApiV1(token=token)
+        _LOGGER.debug(
+            "Using Open API V1 with token authentication for user: %s", token[:8]
+        )
     elif config.get(CONF_AUTH_TYPE) == AUTH_PASSWORD:
         api_version = "classic"
         username = config[CONF_USERNAME]
@@ -159,12 +166,210 @@ async def async_setup_entry(
             add_random_user_id=True, agent_identifier=username
         )
         api.server_url = url
+        _LOGGER.debug(
+            "Using Classic API with password authentication for user: %s", username
+        )
     else:
         raise ConfigEntryError("Unknown authentication type in config entry.")
 
-    devices, plant_id = await hass.async_add_executor_job(
-        get_device_list, api, config, api_version
-    )
+    # Initialize throttle manager early and store in hass.data
+    throttle_manager = init_throttle_manager(hass)
+
+    # Check if we should be throttled BEFORE attempting any API call
+    if api_version == "classic":
+        _LOGGER.debug(
+            "Checking throttle status for setup (entry_id: %s)", config_entry.entry_id
+        )
+        # Check throttle status without making the API call
+        await throttle_manager.async_load()
+        func_name = get_device_list_classic.__name__
+        should_throttle = await throttle_manager.should_throttle(func_name)
+
+        # Calculate remaining minutes if throttled
+        minutes_remaining = 0.0
+        throttle_data = await throttle_manager.get_throttle_data()
+        if should_throttle and func_name in throttle_data:
+            last_call_str = throttle_data[func_name]
+            last_call = dt_util.parse_datetime(last_call_str)
+            if last_call:
+                # Ensure timezone-aware UTC for comparison
+                if last_call.tzinfo is None:
+                    last_call = last_call.replace(tzinfo=dt_util.UTC)
+                elapsed_seconds = (dt_util.utcnow() - last_call).total_seconds()
+                remaining_seconds = (API_THROTTLE_MINUTES * 60) - elapsed_seconds
+                minutes_remaining = max(0, remaining_seconds / 60)
+
+        _LOGGER.debug(
+            "Throttle check result: should_throttle=%s, minutes_remaining=%.1f",
+            should_throttle,
+            minutes_remaining,
+        )
+
+        if should_throttle:
+            _LOGGER.warning(
+                "Setup throttled - need to wait %.1f more minutes (entry_id: %s)",
+                minutes_remaining,
+                config_entry.entry_id,
+            )
+
+            # Format time
+            hours = int(minutes_remaining // 60)
+            mins = int(minutes_remaining % 60)
+            secs = int((minutes_remaining % 1) * 60)
+
+            if hours > 0:
+                time_str = f"{hours}h {mins}m {secs}s"
+            elif mins > 0:
+                time_str = f"{mins}m {secs}s"
+            else:
+                time_str = f"{secs}s"
+
+            persistent_notification.async_create(
+                hass,
+                f"🛡️ **Growatt API Rate Limited - Auto-retry in {time_str}**\n\n"
+                f"Setup will continue automatically - no restart needed.\n\n"
+                f"⏰ **Wait Time:** {time_str} remaining\n"
+                f"🔄 **Status:** Waiting for rate limit cooldown\n"
+                f"✅ **Action:** Nothing required - automatic retry",
+                title="Growatt Server - Rate Limited",
+                notification_id=f"growatt_throttle_{config_entry.entry_id}",
+            )
+
+            # Create placeholder runtime data to avoid errors during throttling
+            # We'll replace this with real coordinators after throttle period
+            # Using type: ignore since this is temporary placeholder state
+            config_entry.runtime_data = GrowattRuntimeData(
+                total_coordinator=None,  # type: ignore[arg-type]
+                devices={},
+            )
+
+            # Schedule delayed setup
+            async def delayed_setup():
+                # Wait for throttle period with live updates
+                remaining_seconds = minutes_remaining * 60
+                while remaining_seconds > 0:
+                    wait_chunk = min(30, remaining_seconds)  # Update every 30 seconds
+                    await asyncio.sleep(wait_chunk)
+                    remaining_seconds -= wait_chunk
+
+                    # Update notification with remaining time
+                    if remaining_seconds > 0:
+                        total_mins = remaining_seconds / 60
+                        hours = int(total_mins // 60)
+                        mins = int(total_mins % 60)
+                        secs = int((total_mins % 1) * 60)
+
+                        if hours > 0:
+                            time_str = f"{hours}h {mins}m {secs}s"
+                        elif mins > 0:
+                            time_str = f"{mins}m {secs}s"
+                        else:
+                            time_str = f"{secs}s"
+
+                        persistent_notification.async_create(
+                            hass,
+                            f"🛡️ **Growatt API Rate Limited - Auto-retry in {time_str}**\n\n"
+                            f"Setup will continue automatically - no restart needed.\n\n"
+                            f"⏰ **Wait Time:** {time_str} remaining\n"
+                            f"🔄 **Status:** Waiting for rate limit cooldown",
+                            title="Growatt Server - Rate Limited",
+                            notification_id=f"growatt_throttle_{config_entry.entry_id}",
+                        )
+
+                # Dismiss notification
+                persistent_notification.async_dismiss(
+                    hass, f"growatt_throttle_{config_entry.entry_id}"
+                )
+
+                # Complete the real setup now
+                _LOGGER.info(
+                    "Throttle period expired, completing setup (entry_id: %s)",
+                    config_entry.entry_id,
+                )
+
+                try:
+                    # Get device list with proper async/sync pattern
+                    if api_version == "v1":
+                        devices, plant_id = await hass.async_add_executor_job(
+                            get_device_list, api, config, api_version
+                        )
+                    elif api_version == "classic":
+                        # Use throttled version - call directly on the manager!
+                        devices, plant_id = await throttle_manager.throttled_call(
+                            get_device_list_classic, api, config
+                        )
+                    else:
+                        _LOGGER.error(
+                            "Unknown API version during delayed setup: %s", api_version
+                        )
+                        return
+
+                    # Create a coordinator for the total sensors
+                    total_coordinator = GrowattCoordinator(
+                        hass, config_entry, plant_id, "total", plant_id
+                    )
+
+                    # Create coordinators for each device
+                    device_coordinators = {
+                        device["deviceSn"]: GrowattCoordinator(
+                            hass,
+                            config_entry,
+                            device["deviceSn"],
+                            device["deviceType"],
+                            plant_id,
+                        )
+                        for device in devices
+                        if device["deviceType"]
+                        in ["inverter", "tlx", "storage", "mix", "min"]
+                    }
+
+                    # Perform the first refresh for the total coordinator
+                    await total_coordinator.async_config_entry_first_refresh()
+
+                    # Perform the first refresh for each device coordinator
+                    for device_coordinator in device_coordinators.values():
+                        await device_coordinator.async_config_entry_first_refresh()
+
+                    # Update runtime data with real coordinators
+                    config_entry.runtime_data = GrowattRuntimeData(
+                        total_coordinator=total_coordinator,
+                        devices=device_coordinators,
+                    )
+
+                    # Set up all the entities
+                    await hass.config_entries.async_forward_entry_setups(
+                        config_entry, PLATFORMS
+                    )
+
+                    _LOGGER.info(
+                        "Successfully completed delayed setup (entry_id: %s)",
+                        config_entry.entry_id,
+                    )
+                except Exception as e:
+                    _LOGGER.error(
+                        "Error during delayed setup (entry_id: %s): %s",
+                        config_entry.entry_id,
+                        e,
+                    )
+
+            # Start the delayed setup task
+            hass.async_create_task(delayed_setup())
+
+            # Return True - setup "succeeded" but in throttled state
+            return True
+
+    # Get device list with proper async/sync pattern
+    if api_version == "v1":
+        devices, plant_id = await hass.async_add_executor_job(
+            get_device_list, api, config, api_version
+        )
+    elif api_version == "classic":
+        # Use throttled version - call directly on the manager!
+        devices, plant_id = await throttle_manager.throttled_call(
+            get_device_list_classic, api, config
+        )
+    else:
+        raise ConfigEntryError(f"Unknown API version: {api_version}")
 
     # Create a coordinator for the total sensors
     total_coordinator = GrowattCoordinator(
