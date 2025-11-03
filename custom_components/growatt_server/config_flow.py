@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from . import growattServer
+import growattServer
 import requests
 import voluptuous as vol
 

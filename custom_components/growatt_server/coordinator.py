@@ -5,8 +5,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from . import growattServer
-from .growattServer import DeviceType
+import growattServer
+from growattServer import DeviceType
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
@@ -388,8 +388,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.api_version == "v1":
             # Use V1 API for token authentication
             response = await self.hass.async_add_executor_job(
-                self.api.min_write_time_segment,
+                self.api.write_time_segment,
                 self.device_id,
+                DeviceType.SPH_MIX,
                 segment_id,
                 batt_mode,
                 start_time,
@@ -430,7 +431,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             List of dictionaries containing segment information
         """
         _LOGGER.debug(
-            "Reading MIN/TLX time segments for device %s",
+            "Reading V1 time segments for device %s",
             self.device_id,
         )
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from growattServer import GrowattV1ApiError
+from growattServer import GrowattV1ApiError, DeviceType
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant
@@ -38,6 +38,15 @@ class GrowattSwitchEntityDescription(SwitchEntityDescription, GrowattRequiredKey
 
 
 MIN_SWITCH_TYPES: tuple[GrowattSwitchEntityDescription, ...] = (
+    GrowattSwitchEntityDescription(
+        key="ac_charge",
+        translation_key="ac_charge",
+        api_key="acChargeEnable",  # Key returned by V1 API
+        write_key="ac_charge",  # Key used to write parameter
+    ),
+)
+
+MIX_SWITCH_TYPES: tuple[GrowattSwitchEntityDescription, ...] = (
     GrowattSwitchEntityDescription(
         key="ac_charge",
         translation_key="ac_charge",
@@ -100,30 +109,44 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
             self.async_write_ha_state()
 
             # Convert boolean to API format (1 or 0)
-            api_value = "1" if state else "0"
+            enabled= 1 if state else 0
 
             # Use write_key if specified, otherwise fall back to api_key
             parameter_id = (
                 self.entity_description.write_key or self.entity_description.api_key
             )
 
+            command = ("mix_ac_charge_time_period",)
+
+            charge_params = self.coordinator.api.MixAcChargeTimeParams(
+                charge_power=80,  # 80% charging power
+                charge_stop_soc=95,  # Stop at 95% SOC
+                mains_enabled=True,  # Enable mains charging
+                start_hour=14,  # Start at 14:00
+                start_minute=0,
+                end_hour=16,  # End at 16:00
+                end_minute=0,
+                enabled=enabled,
+            )
+
             # Use V1 API to write parameter
             await self.hass.async_add_executor_job(
-                self.coordinator.api.min_write_parameter,
+                self.coordinator.api.write_parameter,
                 self.coordinator.device_id,
-                parameter_id,
-                api_value,
+                DeviceType.SPH_MIX,
+                command,
+                charge_params,
             )
 
             _LOGGER.debug(
                 "Set switch %s to %s",
-                parameter_id,
-                api_value,
+                command,
+                charge_params,
             )
 
             # If no exception was raised, the write was successful
             # Update the value in coordinator
-            self.coordinator.set_value(self.entity_description, api_value)
+            self.coordinator.set_value(self.entity_description, enabled)
             self._pending_state = None
             self.async_write_ha_state()
 
@@ -147,16 +170,29 @@ async def async_setup_entry(
 
     # Add switch entities for each MIN device (only supported with V1 API)
     for device_coordinator in runtime_data.devices.values():
+        # if (
+        #     device_coordinator.device_type == "min"
+        #     and device_coordinator.api_version == "v1"
+        # ):
+        #     entities.extend(
+        #         GrowattSwitch(
+        #             coordinator=device_coordinator,
+        #             description=description,
+        #         )
+        #         for description in MIN_SWITCH_TYPES
+        #     )
+
         if (
-            device_coordinator.device_type == "min"
-            and device_coordinator.api_version == "v1"
+            # device_coordinator.device_type == "mix"
+            # and
+            device_coordinator.api_version == "v1"
         ):
             entities.extend(
                 GrowattSwitch(
                     coordinator=device_coordinator,
                     description=description,
                 )
-                for description in MIN_SWITCH_TYPES
+                for description in MIX_SWITCH_TYPES
             )
 
     async_add_entities(entities)
