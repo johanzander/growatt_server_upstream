@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import time
 import logging
 from typing import Any
 
@@ -31,6 +32,11 @@ class GrowattSwitchEntityDescription(SwitchEntityDescription, GrowattRequiredKey
     """Describes Growatt switch entity."""
 
     write_key: str | None = None  # Parameter ID for writing (if different from api_key)
+    # Default charge settings
+    default_start_time: time = time(14, 0)
+    default_end_time: time = time(16, 0)
+    default_charge_power: int = 80
+    default_charge_stop_soc: int = 95
 
 
 # Note that the Growatt V1 API uses different keys for reading and writing parameters.
@@ -52,6 +58,10 @@ MIX_SWITCH_TYPES: tuple[GrowattSwitchEntityDescription, ...] = (
         translation_key="ac_charge",
         api_key="acChargeEnable",  # Key returned by V1 API
         write_key="ac_charge",  # Key used to write parameter
+        default_start_time=time(14, 0),
+        default_end_time=time(16, 0),
+        default_charge_power=80,
+        default_charge_stop_soc=95,
     ),
 )
 
@@ -62,6 +72,10 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
     _attr_has_entity_name = True
     entity_description: GrowattSwitchEntityDescription
     _pending_state: bool | None = None
+    _charge_start_time: time | None = None
+    _charge_end_time: time | None = None
+    _charge_power: int | None = None
+    _charge_stop_soc: int | None = None
 
     def __init__(
         self,
@@ -77,6 +91,11 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
             manufacturer="Growatt",
             name=coordinator.device_id,
         )
+        # Initialize with default times
+        self._charge_start_time = description.default_start_time
+        self._charge_end_time = description.default_end_time
+        self._charge_power = description.default_charge_power
+        self._charge_stop_soc = description.default_charge_stop_soc
 
     @property
     def is_on(self) -> bool | None:
@@ -85,6 +104,13 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
             return self._pending_state
 
         value = self.coordinator.get_value(self.entity_description)
+
+        _LOGGER.debug(
+            "GET switch value %s pending state %s",
+            value,
+            self._pending_state,
+        )
+
         if value is None:
             return None
 
@@ -95,13 +121,32 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        await self._async_set_state(True)
+        # Extract time parameters from kwargs if provided
+        start_time = kwargs.get("start_time", self._charge_start_time)
+        end_time = kwargs.get("end_time", self._charge_end_time)
+        charge_power = kwargs.get("charge_power", self._charge_power)
+        charge_stop_soc = kwargs.get("charge_stop_soc", self._charge_stop_soc)
+
+        await self._async_set_state(
+            True,
+            start_time=start_time,
+            end_time=end_time,
+            charge_power=charge_power,
+            charge_stop_soc=charge_stop_soc,
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
         await self._async_set_state(False)
 
-    async def _async_set_state(self, state: bool) -> None:
+    async def _async_set_state(
+        self,
+        state: bool,
+        start_time: time | None = None,
+        end_time: time | None = None,
+        charge_power: int | None = None,
+        charge_stop_soc: int | None = None,
+    ) -> None:
         """Set the switch state."""
         try:
             # Store the pending state before making the API call
@@ -109,7 +154,39 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
             self.async_write_ha_state()
 
             # Convert boolean to API format (1 or 0)
-            enabled= 1 if state else 0
+            enabled = 1 if state else 0
+
+            # Use provided times or fall back to stored values
+            start = (
+                start_time
+                or self._charge_start_time
+                or self.entity_description.default_start_time
+            )
+            end = (
+                end_time
+                or self._charge_end_time
+                or self.entity_description.default_end_time
+            )
+            power = (
+                charge_power
+                or self._charge_power
+                or self.entity_description.default_charge_power
+            )
+            soc = (
+                charge_stop_soc
+                or self._charge_stop_soc
+                or self.entity_description.default_charge_stop_soc
+            )
+
+            # Store the new values
+            if start_time:
+                self._charge_start_time = start_time
+            if end_time:
+                self._charge_end_time = end_time
+            if charge_power:
+                self._charge_power = charge_power
+            if charge_stop_soc:
+                self._charge_stop_soc = charge_stop_soc
 
             # Use write_key if specified, otherwise fall back to api_key
             parameter_id = (
@@ -119,13 +196,13 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
             command = ("mix_ac_charge_time_period",)
 
             charge_params = self.coordinator.api.MixAcChargeTimeParams(
-                charge_power=80,  # 80% charging power
-                charge_stop_soc=95,  # Stop at 95% SOC
-                mains_enabled=True,  # Enable mains charging
-                start_hour=14,  # Start at 14:00
-                start_minute=0,
-                end_hour=16,  # End at 16:00
-                end_minute=0,
+                charge_power=power,
+                charge_stop_soc=soc,
+                mains_enabled=True,
+                start_hour=start.hour,
+                start_minute=start.minute,
+                end_hour=end.hour,
+                end_minute=end.minute,
                 enabled=enabled,
             )
 
@@ -170,23 +247,11 @@ async def async_setup_entry(
 
     # Add switch entities for each MIN device (only supported with V1 API)
     for device_coordinator in runtime_data.devices.values():
-        # if (
-        #     device_coordinator.device_type == "min"
-        #     and device_coordinator.api_version == "v1"
-        # ):
-        #     entities.extend(
-        #         GrowattSwitch(
-        #             coordinator=device_coordinator,
-        #             description=description,
-        #         )
-        #         for description in MIN_SWITCH_TYPES
-        #     )
-
         if (
-            # device_coordinator.device_type == "mix"
-            # and
-            device_coordinator.api_version == "v1"
+            device_coordinator.device_type in ["mix"]
+            and device_coordinator.api_version == "v1"
         ):
+            # Add switch entities for MIX devices
             entities.extend(
                 GrowattSwitch(
                     coordinator=device_coordinator,
@@ -194,5 +259,18 @@ async def async_setup_entry(
                 )
                 for description in MIX_SWITCH_TYPES
             )
+        if (
+            device_coordinator.device_type in ["min"]
+            and device_coordinator.api_version == "v1"
+        ):
+            # Add switch entities for MIN devices
+            entities.extend(
+                GrowattSwitch(
+                    coordinator=device_coordinator,
+                    description=description,
+                )
+                for description in MIN_SWITCH_TYPES
+            )
+
 
     async_add_entities(entities)

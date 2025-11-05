@@ -1,6 +1,7 @@
 """The Growatt server PV inverter sensor integration."""
 
 import asyncio
+from datetime import datetime, time
 import logging
 from collections.abc import Mapping
 
@@ -490,12 +491,13 @@ async def _async_register_services(
         ],
     )
 
-    has_v1_device = any(
-        coord.device_type in ("tlx", "mix") and coord.api_version == "v1"
-        for coord in device_coordinators.values()
-    )
+    v1_devices = {
+        device_id: coord
+        for device_id, coord in device_coordinators.items()
+        if coord.device_type in ("tlx", "mix") and coord.api_version == "v1"
+    }
 
-    if not has_v1_device:
+    if not v1_devices:
         _LOGGER.warning(
             "No V1 API devices found, skipping TOU service registration. "
             "Services require TLX/MIX devices with token authentication"
@@ -507,21 +509,23 @@ async def _async_register_services(
     def get_coordinator(device_id: str | None = None) -> GrowattCoordinator:
         """Get coordinator by device_id with consistent behavior."""
         if device_id is None:
-            if len(has_v1_device) == 1:
+            if len(v1_devices) == 1:
                 # Only one device - return it
-                return next(iter(has_v1_device.values()))
+                return next(iter(v1_devices.values()))
             # Multiple devices - require explicit selection
-            device_list = ", ".join(has_v1_device.keys())
+            device_list = ", ".join(v1_devices.keys())
             raise HomeAssistantError(
                 f"Multiple V1 devices available ({device_list}). "
                 "Please specify device_id parameter."
             )
-
         # Explicit device_id provided
-        if device_id not in has_v1_device:
+        if device_id not in v1_devices:
             raise HomeAssistantError(f"V1 device '{device_id}' not found")
 
-        return has_v1_device[device_id]
+        _LOGGER.debug("Found V1 device: %s", device_id)
+        _LOGGER.debug("V1 device details: %s", v1_devices[device_id])
+
+        return v1_devices[device_id]
 
     async def handle_update_time_segment(call: ServiceCall) -> None:
         """Handle update_time_segment service call."""
@@ -532,14 +536,22 @@ async def _async_register_services(
         enabled = call.data["enabled"]
         device_id = call.data.get("device_id")
 
+        # SPH_MIX specific parameters (optional) - ensure they are integers
+        charge_power = int(call.data.get("charge_power", 80))
+        charge_stop_soc = int(call.data.get("charge_stop_soc", 95))
+        mains_enabled = call.data.get("mains_enabled", True)
+
         _LOGGER.debug(
-            "handle_update_time_segment: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s, device_id=%s",
+            "handle_update_time_segment: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s, device_id=%s, charge_power=%d, charge_stop_soc=%d, mains_enabled=%s",
             segment_id,
             batt_mode_str,
             start_time_str,
             end_time_str,
             enabled,
             device_id,
+            charge_power,
+            charge_stop_soc,
+            mains_enabled,
         )
 
         # Convert batt_mode string to integer
@@ -550,24 +562,27 @@ async def _async_register_services(
 
         # Convert time strings to datetime.time objects
         try:
-            start_time = datetime.strptime(start_time_str, "%H:%M").time()
-            end_time = datetime.strptime(end_time_str, "%H:%M").time()
+            start_time = time.fromisoformat(start_time_str)
+            end_time = time.fromisoformat(end_time_str)
         except ValueError as err:
             _LOGGER.error("Start_time and end_time must be in HH:MM format")
             raise HomeAssistantError(
                 "start_time and end_time must be in HH:MM format"
             ) from err
 
-        # Get the appropriate MIN coordinator
+        # Get the appropriate coordinator
         coordinator = get_coordinator(device_id)
 
         try:
-            await coordinator.update_time_segment(
+            return await coordinator.update_time_segment(
                 segment_id,
                 batt_mode,
                 start_time,
                 end_time,
                 enabled,
+                charge_power=charge_power,
+                charge_stop_soc=charge_stop_soc,
+                mains_enabled=mains_enabled,
             )
         except Exception as err:
             _LOGGER.error(
@@ -581,31 +596,33 @@ async def _async_register_services(
 
     async def handle_read_time_segments(call: ServiceCall) -> dict:
         """Handle read_min_time_segments service call."""
-        # Find the first V1 API coordinator to use
 
-        _LOGGER.info("XXXXX handle_read_time_segments() called")
-        coordinator = next(
-            (
-                coord
-                for coord in device_coordinators.values()
-                if coord.device_type in ("tlx", "mix") and coord.api_version == "v1"
-            ),
-            None,
-        )
+        _LOGGER.debug("CALL: %s", call.data)
+        device_id = "EGM2H4L0G0"
+
+        # # Handle device_id being passed as a list (extract first element)
+        # if isinstance(device_id, list):
+        #     device_id = device_id[0] if device_id else None
+
+        _LOGGER.info("handle_read_time_segments() called with device_id=%s", device_id)
+        coordinator = get_coordinator(device_id)
 
         if coordinator is None:
-            raise HomeAssistantError("No V1 API device found (requires TLX/MIX with token authentication)")
+            raise HomeAssistantError(
+                "No V1 API device found (requires TLX/MIX with token authentication)"
+            )
 
         try:
             time_segments = await coordinator.read_time_segments()
-            return {"time_segments": time_segments}
         except Exception as err:
             _LOGGER.error("Error reading time segments: %s", err)
-            raise HomeAssistantError(
-                f"Error reading time segments: {err}"
-            ) from err
+            raise HomeAssistantError(f"Error reading time segments: {err}") from err
+        else:
+            return {"time_segments": time_segments}
 
-    update_time_segment_fields = {
+    # Common fields for all device types
+    common_fields = {
+        vol.Optional("device_id"): vol.Any(str, None),
         vol.Required("segment_id"): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=1, max=9, mode=selector.NumberSelectorMode.BOX
@@ -622,9 +639,74 @@ async def _async_register_services(
                 ]
             )
         ),
-        vol.Required("start_time"): selector.TimeSelector(),
-        vol.Required("end_time"): selector.TimeSelector(),
+        vol.Required(
+            "start_time", description={"suggested_value": "08:00:00"}
+        ): selector.TimeSelector(selector.TimeSelectorConfig()),
+        vol.Required(
+            "end_time", description={"suggested_value": "17:00:00"}
+        ): selector.TimeSelector(selector.TimeSelectorConfig()),
         vol.Required("enabled"): selector.BooleanSelector(),
+    }
+
+    # SPH_MIX specific fields
+    mix_fields = {
+        vol.Optional("charge_power", default=80): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0,
+                max=100,
+                step=1,
+                unit_of_measurement="%",
+                mode=selector.NumberSelectorMode.SLIDER,
+            )
+        ),
+        vol.Optional("charge_stop_soc", default=95): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0,
+                max=100,
+                step=1,
+                unit_of_measurement="%",
+                mode=selector.NumberSelectorMode.SLIDER,
+            )
+        ),
+        vol.Optional("mains_enabled", default=True): selector.BooleanSelector(),
+    }
+
+    # MIN_TLX specific fields
+    min_fields = {
+        vol.Required("segment_id"): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1, max=9, mode=selector.NumberSelectorMode.BOX
+            )
+        ),
+        vol.Optional("mains_enabled", default=True): selector.BooleanSelector(),
+    }
+
+    # Determine which fields to include based on available devices
+    device_types = {coord.device_type for coord in v1_devices.values()}
+
+    # Build schema based on device types present
+    if "mix" in device_types and "tlx" in device_types:
+        # Both device types - include all fields (user will see all options)
+        update_time_segment_fields = {**common_fields, **mix_fields}
+        _LOGGER.info(
+            "Registering update_time_segment with fields for both MIX and TLX devices"
+        )
+    elif "mix" in device_types:
+        # Only MIX devices - include MIX-specific fields
+        update_time_segment_fields = {**common_fields, **mix_fields}
+        _LOGGER.info(
+            "Registering update_time_segment with MIX-specific fields "
+            "(charge_power, charge_stop_soc, mains_enabled)"
+        )
+    else:
+        # Only TLX devices or no specific detection - use common fields only
+        update_time_segment_fields = { **common_fields, **min_fields }
+        _LOGGER.info(
+            "Registering update_time_segment with TLX-only fields "
+            "(no MIX-specific parameters)"
+        )
+    read_time_segments_fields = {
+        vol.Optional("device_id", default=None): vol.Any(str, None),
     }
 
     # Register the services
@@ -642,9 +724,11 @@ async def _async_register_services(
             DOMAIN,
             "read_time_segments",
             handle_read_time_segments,
+            schema=vol.Schema(read_time_segments_fields),
             supports_response=SupportsResponse.ONLY,
         )
         _LOGGER.info("Registered service: read_time_segments")
+
 
 async def async_unload_entry(
     hass: HomeAssistant, config_entry: GrowattConfigEntry

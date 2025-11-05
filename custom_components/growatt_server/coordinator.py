@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 import growattServer
 from growattServer import DeviceType
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -15,7 +14,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_URL, DOMAIN
+from .const import (
+    BATT_MODE_BATTERY_FIRST,
+    BATT_MODE_GRID_FIRST,
+    BATT_MODE_LOAD_FIRST,
+    DEFAULT_URL,
+    DOMAIN,
+)
 from .models import GrowattRuntimeData
 
 if TYPE_CHECKING:
@@ -93,7 +98,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     try:
                         total_pv_today += float(data[pv_key])
                     except (ValueError, TypeError):
-                        _LOGGER.debug("Could not convert %s to float: %s", pv_key, data[pv_key])
+                        _LOGGER.debug(
+                            "Could not convert %s to float: %s", pv_key, data[pv_key]
+                        )
 
             data["epvToday"] = total_pv_today
             _LOGGER.debug(
@@ -217,9 +224,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "Error fetching mix device data for %s", self.device_id
                     )
                     msg = f"Error fetching {self.device_type} device data: {err}"
-                    raise UpdateFailed(
-                        msg
-                    ) from err
+                    raise UpdateFailed(msg) from err
             else:
                 mix_info = self.api.mix_info(self.device_id)
                 mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
@@ -367,9 +372,18 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.data[entity_description.api_key] = value
 
     async def update_time_segment(
-        self, segment_id: int, batt_mode: int, start_time, end_time, enabled: bool
+        self,
+        segment_id: int,
+        batt_mode: int,
+        start_time,
+        end_time,
+        enabled: bool,
+        charge_power: int = 80,
+        charge_stop_soc: int = 95,
+        mains_enabled: bool = True,
     ) -> None:
-        """Update a time segment.
+        """
+        Update a time segment.
 
         Args:
             segment_id: Time segment ID (1-9)
@@ -377,52 +391,150 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             start_time: Start time (datetime.time object)
             end_time: End time (datetime.time object)
             enabled: Whether the segment is enabled
-        """
+            charge_power: Charge power percentage (0-100, SPH_MIX only)
+            charge_stop_soc: Charge stop SOC percentage (0-100, SPH_MIX only)
+            mains_enabled: Enable mains charging (SPH_MIX only)
 
+        """
         _LOGGER.debug(
-            "Updating MIN/TLX time segment %s for device %s",
+            "Updating time segment %s for device %s (%s)",
             segment_id,
             self.device_id,
+            self.device_type,
         )
 
-        if self.api_version == "v1":
-            # Use V1 API for token authentication
-            response = await self.hass.async_add_executor_job(
-                self.api.write_time_segment,
+        if self.api_version != "v1":
+            msg = "Time segment updates require V1 API (token authentication)"
+            _LOGGER.warning(msg)
+            raise HomeAssistantError(msg)
+
+        # Determine device type and create appropriate params
+        if self.device_type == "tlx":
+            # MIN_TLX device - use TimeSegmentParams
+            device_type = growattServer.DeviceType.MIN_TLX
+            params = self.api.TimeSegmentParams(
+                segment_id=segment_id,
+                batt_mode=batt_mode,
+                start_time=start_time,
+                end_time=end_time,
+                enabled=enabled,
+            )
+            command = f"time_segment_{segment_id}"
+
+        elif self.device_type == "mix":
+            # SPH_MIX device - different commands based on battery mode
+            device_type = growattServer.DeviceType.SPH_MIX
+
+
+
+            if batt_mode == BATT_MODE_BATTERY_FIRST:
+                # Battery first mode - AC charge time period
+                params = self.api.MixAcChargeTimeParams(
+                    charge_power=charge_power,
+                    charge_stop_soc=charge_stop_soc,
+                    mains_enabled=mains_enabled,
+                    start_hour=start_time.hour,
+                    start_minute=start_time.minute,
+                    end_hour=end_time.hour,
+                    end_minute=end_time.minute,
+                    enabled=enabled,
+                )
+                command = "mix_ac_charge_time_period"
+
+            elif batt_mode == BATT_MODE_GRID_FIRST:
+                # Grid first mode - AC discharge time period
+                params = self.api.MixAcDischargeTimeParams(
+                    discharge_power=charge_power,  # discharge power
+                    discharge_stop_soc=charge_stop_soc,  # Stop at % SOC
+                    start_hour=start_time.hour,
+                    start_minute=start_time.minute,
+                    end_hour=end_time.hour,
+                    end_minute=end_time.minute,
+                    enabled=enabled,
+                )
+                command = "mix_ac_discharge_time_period"
+
+            elif batt_mode == BATT_MODE_LOAD_FIRST:
+                # Load first mode - single export
+                params = self.api.ChargeDischargeParams(
+                    discharge_stop_soc=charge_stop_soc,
+                )
+                command = "mix_single_export"
+
+            else:
+                msg = f"Invalid battery mode {batt_mode} for MIX device"
+                _LOGGER.error(msg)
+                raise HomeAssistantError(msg)
+
+        else:
+            msg = f"Time segment updates not supported for device type: {self.device_type}"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
+        _LOGGER.debug(
+            "Running Command %s with params %s",
+            command,
+            params,
+        )
+
+        try:
+            # Use V1 API write_parameter method
+            response = self.hass.async_add_executor_job(
+                self.api.write_parameter,
                 self.device_id,
-                DeviceType.SPH_MIX,
-                segment_id,
-                batt_mode,
-                start_time,
-                end_time,
-                enabled,
+                device_type,
+                command,
+                params,
             )
 
-            if hasattr(response, 'get'):
-                if response.get("error_code", 1) == 0:
+            _LOGGER.debug(
+                "Write parameter response: type=%s, response=%s",
+                type(response).__name__,
+                response,
+            )
+
+            # Handle dict response (most common)
+            if isinstance(response, dict):
+                error_code = response.get("error_code", 1)
+                error_msg = response.get("error_msg", "Unknown error")
+
+                if error_code == 0:
                     _LOGGER.info(
-                        "Successfully updated MIN/TLX time segment %s for device %s",
+                        "Successfully updated time segment %s for device %s: %s (Full response: %s)",
                         segment_id,
                         self.device_id,
+                        error_msg,
+                        response,
                     )
                     # Trigger a refresh to update the data
                     await self.async_refresh()
                 else:
-                    error_msg = response.get("error_msg", "Unknown error")
                     _LOGGER.error(
-                        "Failed to update MIN/TLX time segment %s for device %s: %s",
+                        "Failed to update time segment %s for device %s: error_code=%s, %s",
                         segment_id,
                         self.device_id,
+                        error_code,
                         error_msg,
                     )
-                    raise HomeAssistantError(f"Failed to update time segment: {error_msg}")
-        else:
-            _LOGGER.warning(
-                "Time segment updates are only supported with V1 API (token authentication)"
+                    msg = f"Failed to update time segment: {error_msg} (code: {error_code})"
+                    raise HomeAssistantError(msg)
+            else:
+                _LOGGER.warning(
+                    "Unexpected response format for time segment update: %s - %s",
+                    type(response).__name__,
+                    response,
+                )
+        except HomeAssistantError:
+            # Re-raise HomeAssistantError as-is
+            raise
+        except Exception as err:
+            _LOGGER.exception(
+                "Error updating time segment %s for device %s",
+                segment_id,
+                self.device_id,
             )
-            raise HomeAssistantError(
-                "Time segment updates require token authentication"
-            )
+            msg = f"Error updating time segment: {err}"
+            raise HomeAssistantError(msg) from err
 
     async def read_time_segments(self) -> list[dict]:
         """Read time segments from an inverter.
@@ -435,88 +547,58 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.device_id,
         )
 
-        if self.api_version != "v1":
+        if self.api_version == "v1":
+            # Use V1 API for token authentication
+            response = await self.hass.async_add_executor_job(
+                self.api.read_time_segments,
+                self.device_id,
+                DeviceType.SPH_MIX,
+            )
+
+            _LOGGER.debug(
+                "Response type: %s, Response: %s",
+                type(response).__name__,
+                response,
+            )
+
+            # Check if response is already a list (direct data)
+            if isinstance(response, list):
+                _LOGGER.info(
+                    "Successfully read %d time segments for device %s",
+                    len(response),
+                    self.device_id,
+                )
+                return response
+
+            # Check if response is a dict with error handling
+            if isinstance(response, dict):
+                if response.get("error_code", 1) == 0:
+                    data = response.get("data", [])
+                    _LOGGER.info(
+                        "Successfully read %d time segments for device %s",
+                        len(data) if isinstance(data, list) else 0,
+                        self.device_id,
+                    )
+                    return data
+                else:
+                    error_msg = response.get("error_msg", "Unknown error")
+                    _LOGGER.error(
+                        "Failed to read V1 time segments for device %s: %s",
+                        self.device_id,
+                        error_msg,
+                    )
+                    msg = f"Failed to read time segments: {error_msg}"
+                    raise HomeAssistantError(msg)
+
+            # Fallback: return as-is if we don't know the format
             _LOGGER.warning(
-                "Reading time segments is only supported with V1 API (token authentication)"
+                "Unexpected response format for time segments: %s",
+                type(response).__name__,
             )
-            raise HomeAssistantError(
-                "Reading time segments requires token authentication"
+            return response if isinstance(response, list) else []
+        else:
+            _LOGGER.warning(
+                "Time segment reads are only supported with V1 API (token authentication)"
             )
-
-        # Ensure we have current data
-        if not self.data:
-            _LOGGER.debug("Triggering refresh to get time segments")
-            await self.async_refresh()
-
-        time_segments = []
-        mode_names = {0: "Load First", 1: "Battery First", 2: "Grid First"}
-
-        try:
-            # Extract time segments from coordinator data
-            for i in range(1, 10):  # Segments 1-9
-                # Get raw time values
-                start_time_raw = self.data.get(f"forcedTimeStart{i}", "0:0")
-                end_time_raw = self.data.get(f"forcedTimeStop{i}", "0:0")
-
-                # Handle 'null' or empty values
-                if start_time_raw in ("null", None, ""):
-                    start_time_raw = "0:0"
-                if end_time_raw in ("null", None, ""):
-                    end_time_raw = "0:0"
-
-                # Format times with leading zeros (HH:MM)
-                try:
-                    start_parts = str(start_time_raw).split(":")
-                    start_hour = int(start_parts[0])
-                    start_min = int(start_parts[1])
-                    start_time = f"{start_hour:02d}:{start_min:02d}"
-                except (ValueError, IndexError):
-                    start_time = "00:00"
-
-                try:
-                    end_parts = str(end_time_raw).split(":")
-                    end_hour = int(end_parts[0])
-                    end_min = int(end_parts[1])
-                    end_time = f"{end_hour:02d}:{end_min:02d}"
-                except (ValueError, IndexError):
-                    end_time = "00:00"
-
-                # Get the mode value
-                mode_raw = self.data.get(f"time{i}Mode")
-                if mode_raw in ("null", None):
-                    batt_mode = None
-                else:
-                    try:
-                        batt_mode = int(mode_raw)
-                    except (ValueError, TypeError):
-                        batt_mode = None
-
-                # Get the enabled status
-                enabled_raw = self.data.get(f"forcedStopSwitch{i}", 0)
-                if enabled_raw in ("null", None):
-                    enabled = False
-                else:
-                    try:
-                        enabled = int(enabled_raw) == 1
-                    except (ValueError, TypeError):
-                        enabled = False
-
-                segment = {
-                    "segment_id": i,
-                    "batt_mode": batt_mode,
-                    "mode_name": mode_names.get(batt_mode, "Unknown"),
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "enabled": enabled,
-                }
-
-                time_segments.append(segment)
-                _LOGGER.debug("MIN/TLX time segment %s: %s", i, segment)
-
-        except Exception as err:
-            _LOGGER.error("Error reading MIN/TLX time segments: %s", err)
-            raise HomeAssistantError(
-                f"Error reading MIN/TLX time segments: {err}"
-            ) from err
-
-        return time_segments
+            msg = "Time segment reads require token authentication"
+            raise HomeAssistantError(msg)
