@@ -581,77 +581,188 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             msg = f"Error updating time segment: {err}"
             raise HomeAssistantError(msg) from err
 
-    async def read_time_segments(self) -> list[dict]:
-        """Read time segments from an inverter.
+    async def read_time_segments(self) -> list[dict[str, Any]]:
+        """
+        Read time segments from the device.
+
+        For MIN/TLX devices: Uses the API's read_time_segments method.
+        For SPH/MIX devices: Parses the forced charge/discharge fields.
 
         Returns:
-            List of dictionaries containing segment information
+            List of time segment dictionaries with keys:
+            - segment_id: int
+            - batt_mode: int (0=load first, 1=battery first/charge, 2=grid first/discharge)
+            - mode_name: str
+            - start_time: str (HH:MM format)
+            - end_time: str (HH:MM format)
+            - enabled: bool
+
         """
+        if self.api_version != "v1":
+            msg = "Time segment reading requires V1 API"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
+        if self.device_type == "tlx":
+            return await self._read_tlx_time_segments()
+        elif self.device_type == "mix":
+            return await self._read_mix_time_segments()
+        else:
+            msg = f"Time segment reading not supported for device type: {self.device_type}"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
+    async def _read_tlx_time_segments(self) -> list[dict[str, Any]]:
+        """Read time segments for MIN/TLX devices using the API."""
         _LOGGER.debug(
-            "Reading V1 time segments for device %s",
+            "Reading TLX time segments for device %s",
             self.device_id,
         )
 
-        if self.api_version == "v1":
-            # Determine device type and create appropriate params
-            if self.device_type == "tlx":
-                # MIN_TLX device - use TimeSegmentParams
-                device_type = growattServer.DeviceType.MIN_TLX
-            elif self.device_type == "mix":
-                # SPH_MIX device - different commands based on battery mode
-                device_type = growattServer.DeviceType.SPH_MIX
-
-            # Use V1 API for token authentication
+        try:
             response = await self.hass.async_add_executor_job(
                 self.api.read_time_segments,
                 self.device_id,
-                device_type,
+                growattServer.DeviceType.MIN_TLX,
             )
 
             _LOGGER.debug(
-                "Response type: %s, Response: %s",
+                "TLX read_time_segments response type: %s, content: %s",
                 type(response).__name__,
                 response,
             )
 
-            # Check if response is already a list (direct data)
+            # Handle different response formats
             if isinstance(response, list):
-                _LOGGER.info(
-                    "Successfully read %d time segments for device %s",
-                    len(response),
-                    self.device_id,
-                )
-                return response
-
-            # Check if response is a dict with error handling
-            if isinstance(response, dict):
-                if response.get("error_code", 1) == 0:
-                    data = response.get("data", [])
-                    _LOGGER.info(
-                        "Successfully read %d time segments for device %s",
-                        len(data) if isinstance(data, list) else 0,
-                        self.device_id,
-                    )
-                    return data
+                time_segments = response
+            elif isinstance(response, dict):
+                error_code = response.get("error_code", 1)
+                if error_code == 0:
+                    time_segments = response.get("data", [])
                 else:
                     error_msg = response.get("error_msg", "Unknown error")
-                    _LOGGER.error(
-                        "Failed to read V1 time segments for device %s: %s",
-                        self.device_id,
-                        error_msg,
-                    )
-                    msg = f"Failed to read time segments: {error_msg}"
+                    msg = f"API error reading time segments: {error_msg} (code: {error_code})"
                     raise HomeAssistantError(msg)
+            else:
+                _LOGGER.warning(
+                    "Unexpected response format: %s", type(response).__name__
+                )
+                time_segments = []
 
-            # Fallback: return as-is if we don't know the format
-            _LOGGER.warning(
-                "Unexpected response format for time segments: %s",
-                type(response).__name__,
+            _LOGGER.info(
+                "Successfully read %d time segments for TLX device %s",
+                len(time_segments),
+                self.device_id,
             )
-            return response if isinstance(response, list) else []
-        else:
-            _LOGGER.warning(
-                "Time segment reads are only supported with V1 API (token authentication)"
+
+            return time_segments
+
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            _LOGGER.exception("Error reading TLX time segments: %s", err)
+            msg = f"Error reading TLX time segments: {err}"
+            raise HomeAssistantError(msg) from err
+
+    async def _read_mix_time_segments(self) -> list[dict[str, Any]]:
+        """
+        Read time segments for SPH/MIX devices by parsing device settings.
+
+        SPH/MIX devices store charge/discharge periods in numbered fields:
+        - forcedChargeStopSwitch1-6: Enable flags for charge periods
+        - forcedChargeTimeStart1-6: Start times for charge periods
+        - forcedChargeTimeStop1-6: End times for charge periods
+        - forcedDischargeStopSwitch1-6: Enable flags for discharge periods
+        - forcedDischargeTimeStart1-6: Start times for discharge periods
+        - forcedDischargeTimeStop1-6: End times for discharge periods
+
+        """
+        _LOGGER.debug(
+            "Reading MIX time segments for device %s",
+            self.device_id,
+        )
+
+        try:
+            # Get current device data which includes all settings
+            if not self.data:
+                await self.async_refresh()
+
+            time_segments = []
+
+            # Parse charge periods (Battery First mode - batt_mode=1)
+            for i in range(1, 7):  # 6 charge periods
+                enabled = bool(self.data.get(f"forcedChargeStopSwitch{i}", 0))
+                start_time = self.data.get(f"forcedChargeTimeStart{i}", "0:0")
+                end_time = self.data.get(f"forcedChargeTimeStop{i}", "0:0")
+
+                # Normalize time format from "H:M" to "HH:MM"
+                start_time = self._normalize_time_format(start_time)
+                end_time = self._normalize_time_format(end_time)
+
+                time_segments.append(
+                    {
+                        "segment_id": i,
+                        "batt_mode": BATT_MODE_BATTERY_FIRST,
+                        "mode_name": "Battery First (Charge)",
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "enabled": enabled,
+                    }
+                )
+
+            # Parse discharge periods (Grid First mode - batt_mode=2)
+            for i in range(1, 7):  # 6 discharge periods
+                enabled = bool(self.data.get(f"forcedDischargeStopSwitch{i}", 0))
+                start_time = self.data.get(f"forcedDischargeTimeStart{i}", "0:0")
+                end_time = self.data.get(f"forcedDischargeTimeStop{i}", "0:0")
+
+                # Normalize time format
+                start_time = self._normalize_time_format(start_time)
+                end_time = self._normalize_time_format(end_time)
+
+                time_segments.append(
+                    {
+                        "segment_id": i + 6,  # Offset by 6 to avoid conflicts
+                        "batt_mode": BATT_MODE_GRID_FIRST,
+                        "mode_name": "Grid First (Discharge)",
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "enabled": enabled,
+                    }
+                )
+
+            _LOGGER.info(
+                "Successfully read %d time segments for MIX device %s",
+                len(time_segments),
+                self.device_id,
             )
-            msg = "Time segment reads require token authentication"
-            raise HomeAssistantError(msg)
+
+            return time_segments
+
+        except Exception as err:
+            _LOGGER.exception("Error reading MIX time segments: %s", err)
+            msg = f"Error reading MIX time segments: {err}"
+            raise HomeAssistantError(msg) from err
+
+    @staticmethod
+    def _normalize_time_format(time_str: str) -> str:
+        """
+        Normalize time string from "H:M" format to "HH:MM" format.
+
+        Examples:
+            "14:0" -> "14:00"
+            "0:0" -> "00:00"
+            "9:30" -> "09:30"
+
+        """
+        try:
+            parts = time_str.split(":")
+            if len(parts) != 2:
+                return "00:00"
+
+            hours = int(parts[0])
+            minutes = int(parts[1])
+
+            return f"{hours:02d}:{minutes:02d}"
+        except (ValueError, AttributeError):
+            return "00:00"
