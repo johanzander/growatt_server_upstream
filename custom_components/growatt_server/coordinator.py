@@ -371,12 +371,108 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update a value in coordinator data after successful write."""
         self.data[entity_description.api_key] = value
 
+    def _get_time_segment_params(
+        self,
+        segment_id: int,
+        batt_mode: int,
+        start_time: datetime.time,
+        end_time: datetime.time,
+        enabled: bool,
+        charge_power: int,
+        charge_stop_soc: int,
+        mains_enabled: bool,
+    ) -> tuple[DeviceType, Any, str]:
+        """
+        Determine device type and create appropriate params for time segment update.
+
+        Args:
+            segment_id: Time segment ID (1-9)
+            batt_mode: Battery mode (0=load first, 1=battery first, 2=grid first)
+            start_time: Start time (datetime.time object)
+            end_time: End time (datetime.time object)
+            enabled: Whether the segment is enabled
+            charge_power: Charge power percentage (0-100, SPH_MIX only)
+            charge_stop_soc: Charge stop SOC percentage (0-100, SPH_MIX only)
+            mains_enabled: Enable mains charging (SPH_MIX only)
+
+        Returns:
+            Tuple of (device_type, params, command)
+
+        Raises:
+            HomeAssistantError: If device type is unsupported or battery mode is invalid
+        """
+        if self.device_type == "tlx":
+            # MIN_TLX device - use TimeSegmentParams
+            device_type = growattServer.DeviceType.MIN_TLX
+            params = self.api.TimeSegmentParams(
+                segment_id=segment_id,
+                batt_mode=batt_mode,
+                start_time=start_time,
+                end_time=end_time,
+                enabled=enabled,
+            )
+            command = f"time_segment_{segment_id}"
+            return device_type, params, command
+
+        elif self.device_type == "mix":
+            # SPH_MIX device - different commands based on battery mode
+            device_type = growattServer.DeviceType.SPH_MIX
+
+            if batt_mode == BATT_MODE_BATTERY_FIRST:
+                # Battery first mode - AC charge time period
+                params = self.api.MixAcChargeTimeParams(
+                    charge_power=charge_power,
+                    charge_stop_soc=charge_stop_soc,
+                    mains_enabled=mains_enabled,
+                    start_hour=start_time.hour,
+                    start_minute=start_time.minute,
+                    end_hour=end_time.hour,
+                    end_minute=end_time.minute,
+                    enabled=enabled,
+                    segment_id=segment_id,
+                )
+                command = "mix_ac_charge_time_period"
+                return device_type, params, command
+
+            elif batt_mode == BATT_MODE_GRID_FIRST:
+                # Grid first mode - AC discharge time period
+                params = self.api.MixAcDischargeTimeParams(
+                    discharge_power=charge_power,  # discharge power
+                    discharge_stop_soc=charge_stop_soc,  # Stop at % SOC
+                    start_hour=start_time.hour,
+                    start_minute=start_time.minute,
+                    end_hour=end_time.hour,
+                    end_minute=end_time.minute,
+                    enabled=enabled,
+                    segment_id=segment_id,
+                )
+                command = "mix_ac_discharge_time_period"
+                return device_type, params, command
+
+            elif batt_mode == BATT_MODE_LOAD_FIRST:
+                # Load first mode - single export
+                params = self.api.ChargeDischargeParams(
+                    discharge_stop_soc=charge_stop_soc,
+                )
+                command = "mix_single_export"
+                return device_type, params, command
+
+            else:
+                msg = f"Invalid battery mode {batt_mode} for MIX device"
+                _LOGGER.error(msg)
+                raise HomeAssistantError(msg)
+
+        else:
+            msg = f"Time segment updates not supported for device type: {self.device_type}"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
     async def update_time_segment(
         self,
         segment_id: int,
         batt_mode: int,
-        start_time,
-        end_time,
+        start_time: datetime.time,
+        end_time: datetime.time,
         enabled: bool,
         charge_power: int = 80,
         charge_stop_soc: int = 95,
@@ -408,68 +504,17 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning(msg)
             raise HomeAssistantError(msg)
 
-        # Determine device type and create appropriate params
-        if self.device_type == "tlx":
-            # MIN_TLX device - use TimeSegmentParams
-            device_type = growattServer.DeviceType.MIN_TLX
-            params = self.api.TimeSegmentParams(
-                segment_id=segment_id,
-                batt_mode=batt_mode,
-                start_time=start_time,
-                end_time=end_time,
-                enabled=enabled,
-            )
-            command = f"time_segment_{segment_id}"
-
-        elif self.device_type == "mix":
-            # SPH_MIX device - different commands based on battery mode
-            device_type = growattServer.DeviceType.SPH_MIX
-
-
-
-            if batt_mode == BATT_MODE_BATTERY_FIRST:
-                # Battery first mode - AC charge time period
-                params = self.api.MixAcChargeTimeParams(
-                    charge_power=charge_power,
-                    charge_stop_soc=charge_stop_soc,
-                    mains_enabled=mains_enabled,
-                    start_hour=start_time.hour,
-                    start_minute=start_time.minute,
-                    end_hour=end_time.hour,
-                    end_minute=end_time.minute,
-                    enabled=enabled,
-                )
-                command = "mix_ac_charge_time_period"
-
-            elif batt_mode == BATT_MODE_GRID_FIRST:
-                # Grid first mode - AC discharge time period
-                params = self.api.MixAcDischargeTimeParams(
-                    discharge_power=charge_power,  # discharge power
-                    discharge_stop_soc=charge_stop_soc,  # Stop at % SOC
-                    start_hour=start_time.hour,
-                    start_minute=start_time.minute,
-                    end_hour=end_time.hour,
-                    end_minute=end_time.minute,
-                    enabled=enabled,
-                )
-                command = "mix_ac_discharge_time_period"
-
-            elif batt_mode == BATT_MODE_LOAD_FIRST:
-                # Load first mode - single export
-                params = self.api.ChargeDischargeParams(
-                    discharge_stop_soc=charge_stop_soc,
-                )
-                command = "mix_single_export"
-
-            else:
-                msg = f"Invalid battery mode {batt_mode} for MIX device"
-                _LOGGER.error(msg)
-                raise HomeAssistantError(msg)
-
-        else:
-            msg = f"Time segment updates not supported for device type: {self.device_type}"
-            _LOGGER.error(msg)
-            raise HomeAssistantError(msg)
+        # Get device type, params, and command for this update
+        device_type, params, command = self._get_time_segment_params(
+            segment_id=segment_id,
+            batt_mode=batt_mode,
+            start_time=start_time,
+            end_time=end_time,
+            enabled=enabled,
+            charge_power=charge_power,
+            charge_stop_soc=charge_stop_soc,
+            mains_enabled=mains_enabled,
+        )
 
         _LOGGER.debug(
             "Running Command %s with params %s",
@@ -478,9 +523,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         try:
-            # Use V1 API write_parameter method
+            # Use V1 API write_time_segment method
             response = self.hass.async_add_executor_job(
-                self.api.write_parameter,
+                self.api.write_time_segment,
                 self.device_id,
                 device_type,
                 command,
@@ -488,7 +533,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
             _LOGGER.debug(
-                "Write parameter response: type=%s, response=%s",
+                "Write time segment response: type=%s, response=%s",
                 type(response).__name__,
                 response,
             )
@@ -548,11 +593,19 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         if self.api_version == "v1":
+            # Determine device type and create appropriate params
+            if self.device_type == "tlx":
+                # MIN_TLX device - use TimeSegmentParams
+                device_type = growattServer.DeviceType.MIN_TLX
+            elif self.device_type == "mix":
+                # SPH_MIX device - different commands based on battery mode
+                device_type = growattServer.DeviceType.SPH_MIX
+
             # Use V1 API for token authentication
             response = await self.hass.async_add_executor_job(
                 self.api.read_time_segments,
                 self.device_id,
-                DeviceType.SPH_MIX,
+                device_type,
             )
 
             _LOGGER.debug(

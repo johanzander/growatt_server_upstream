@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import time
 import logging
+from re import S
 from typing import Any
 
 from growattServer import GrowattV1ApiError, DeviceType
@@ -204,6 +205,7 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
                 end_hour=end.hour,
                 end_minute=end.minute,
                 enabled=enabled,
+                segment_id=1,
             )
 
             # Use V1 API to write parameter

@@ -620,6 +620,182 @@ async def _async_register_services(
         else:
             return {"time_segments": time_segments}
 
+    async def handle_update_time_segment_tlx(call: ServiceCall) -> None:
+        """Handle update_time_segment_tlx service call (TLX-specific)."""
+        segment_id = int(call.data["segment_id"])
+        batt_mode_str = str(call.data["batt_mode"])
+        start_time_str = call.data["start_time"]
+        end_time_str = call.data["end_time"]
+        enabled = call.data["enabled"]
+        device_id = call.data.get("device_id")
+
+        _LOGGER.debug(
+            "handle_update_time_segment_tlx: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s, device_id=%s",
+            segment_id,
+            batt_mode_str,
+            start_time_str,
+            end_time_str,
+            enabled,
+            device_id,
+        )
+
+        # Convert batt_mode string to integer
+        batt_mode = BATT_MODE_MAP.get(batt_mode_str)
+        if batt_mode is None:
+            _LOGGER.error("Invalid battery mode: %s", batt_mode_str)
+            raise HomeAssistantError(f"Invalid battery mode: {batt_mode_str}")
+
+        # Convert time strings to datetime.time objects
+        try:
+            start_time = time.fromisoformat(start_time_str)
+            end_time = time.fromisoformat(end_time_str)
+        except ValueError as err:
+            _LOGGER.error("Start_time and end_time must be in HH:MM format")
+            raise HomeAssistantError(
+                "start_time and end_time must be in HH:MM format"
+            ) from err
+
+        # Get the appropriate coordinator (TLX only)
+        coordinator = get_coordinator(device_id)
+        if coordinator.device_type != "tlx":
+            raise HomeAssistantError(
+                f"Device {device_id or 'default'} is not a TLX device. Use update_time_segment_mix for MIX devices."
+            )
+
+        try:
+            # TLX devices use basic parameters without charge_power/SOC
+            return await coordinator.update_time_segment(
+                segment_id,
+                batt_mode,
+                start_time,
+                end_time,
+                enabled,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Error updating TLX time segment %d: %s",
+                segment_id,
+                err,
+            )
+            raise HomeAssistantError(
+                f"Error updating TLX time segment {segment_id}: {err}"
+            ) from err
+
+    async def handle_update_time_segment_mix(call: ServiceCall) -> None:
+        """Handle update_time_segment_mix service call (MIX-specific)."""
+        segment_id = int(call.data["segment_id"])
+        batt_mode_str = str(call.data["batt_mode"])
+        start_time_str = call.data["start_time"]
+        end_time_str = call.data["end_time"]
+        enabled = call.data["enabled"]
+        device_id = call.data.get("device_id")
+
+        # MIX specific parameters - ensure they are integers
+        charge_power = int(call.data.get("charge_power", 80))
+        charge_stop_soc = int(call.data.get("charge_stop_soc", 95))
+        mains_enabled = call.data.get("mains_enabled", True)
+
+        _LOGGER.debug(
+            "handle_update_time_segment_mix: segment_id=%d, batt_mode=%s, start=%s, end=%s, enabled=%s, device_id=%s, charge_power=%d, charge_stop_soc=%d, mains_enabled=%s",
+            segment_id,
+            batt_mode_str,
+            start_time_str,
+            end_time_str,
+            enabled,
+            device_id,
+            charge_power,
+            charge_stop_soc,
+            mains_enabled,
+        )
+
+        # Convert batt_mode string to integer
+        batt_mode = BATT_MODE_MAP.get(batt_mode_str)
+        if batt_mode is None:
+            _LOGGER.error("Invalid battery mode: %s", batt_mode_str)
+            raise HomeAssistantError(f"Invalid battery mode: {batt_mode_str}")
+
+        # Convert time strings to datetime.time objects
+        try:
+            start_time = time.fromisoformat(start_time_str)
+            end_time = time.fromisoformat(end_time_str)
+        except ValueError as err:
+            _LOGGER.error("Start_time and end_time must be in HH:MM format")
+            raise HomeAssistantError(
+                "start_time and end_time must be in HH:MM format"
+            ) from err
+
+        # Get the appropriate coordinator (MIX only)
+        coordinator = get_coordinator(device_id)
+        if coordinator.device_type != "mix":
+            raise HomeAssistantError(
+                f"Device {device_id or 'default'} is not a MIX device. Use update_time_segment_tlx for TLX devices."
+            )
+
+        try:
+            return await coordinator.update_time_segment(
+                segment_id,
+                batt_mode,
+                start_time,
+                end_time,
+                enabled,
+                charge_power=charge_power,
+                charge_stop_soc=charge_stop_soc,
+                mains_enabled=mains_enabled,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Error updating MIX time segment %d: %s",
+                segment_id,
+                err,
+            )
+            raise HomeAssistantError(
+                f"Error updating MIX time segment {segment_id}: {err}"
+            ) from err
+
+    async def handle_read_time_segments_tlx(call: ServiceCall) -> dict:
+        """Handle read_time_segments_tlx service call (TLX-specific)."""
+        device_id = call.data.get("device_id")
+
+        _LOGGER.info(
+            "handle_read_time_segments_tlx() called with device_id=%s", device_id
+        )
+        coordinator = get_coordinator(device_id)
+
+        if coordinator.device_type != "tlx":
+            raise HomeAssistantError(
+                f"Device {device_id or 'default'} is not a TLX device. Use read_time_segments_mix for MIX devices."
+            )
+
+        try:
+            time_segments = await coordinator.read_time_segments()
+        except Exception as err:
+            _LOGGER.error("Error reading TLX time segments: %s", err)
+            raise HomeAssistantError(f"Error reading TLX time segments: {err}") from err
+        else:
+            return {"time_segments": time_segments}
+
+    async def handle_read_time_segments_mix(call: ServiceCall) -> dict:
+        """Handle read_time_segments_mix service call (MIX-specific)."""
+        device_id = call.data.get("device_id")
+
+        _LOGGER.info(
+            "handle_read_time_segments_mix() called with device_id=%s", device_id
+        )
+        coordinator = get_coordinator(device_id)
+
+        if coordinator.device_type != "mix":
+            raise HomeAssistantError(
+                f"Device {device_id or 'default'} is not a MIX device. Use read_time_segments_tlx for TLX devices."
+            )
+
+        try:
+            time_segments = await coordinator.read_time_segments()
+        except Exception as err:
+            _LOGGER.error("Error reading MIX time segments: %s", err)
+            raise HomeAssistantError(f"Error reading MIX time segments: {err}") from err
+        else:
+            return {"time_segments": time_segments}
+
     # Common fields for all device types
     common_fields = {
         vol.Optional("device_id"): vol.Any(str, None),
@@ -700,7 +876,7 @@ async def _async_register_services(
         )
     else:
         # Only TLX devices or no specific detection - use common fields only
-        update_time_segment_fields = { **common_fields, **min_fields }
+        update_time_segment_fields = {**common_fields, **min_fields}
         _LOGGER.info(
             "Registering update_time_segment with TLX-only fields "
             "(no MIX-specific parameters)"
@@ -708,6 +884,12 @@ async def _async_register_services(
     read_time_segments_fields = {
         vol.Optional("device_id", default=None): vol.Any(str, None),
     }
+
+    # TLX-specific schema (no MIX fields)
+    tlx_update_fields = {**common_fields}
+
+    # MIX-specific schema (includes charge parameters)
+    mix_update_fields = {**common_fields, **mix_fields}
 
     # Register the services
     if not hass.services.has_service(DOMAIN, "update_time_segment"):
@@ -728,6 +910,47 @@ async def _async_register_services(
             supports_response=SupportsResponse.ONLY,
         )
         _LOGGER.info("Registered service: read_time_segments")
+
+    # Register device-specific services
+    if "tlx" in device_types:
+        if not hass.services.has_service(DOMAIN, "update_time_segment_tlx"):
+            hass.services.async_register(
+                DOMAIN,
+                "update_time_segment_tlx",
+                handle_update_time_segment_tlx,
+                schema=vol.Schema(tlx_update_fields),
+            )
+            _LOGGER.info("Registered service: update_time_segment_tlx")
+
+        if not hass.services.has_service(DOMAIN, "read_time_segments_tlx"):
+            hass.services.async_register(
+                DOMAIN,
+                "read_time_segments_tlx",
+                handle_read_time_segments_tlx,
+                schema=vol.Schema(read_time_segments_fields),
+                supports_response=SupportsResponse.ONLY,
+            )
+            _LOGGER.info("Registered service: read_time_segments_tlx")
+
+    if "mix" in device_types:
+        if not hass.services.has_service(DOMAIN, "update_time_segment_mix"):
+            hass.services.async_register(
+                DOMAIN,
+                "update_time_segment_mix",
+                handle_update_time_segment_mix,
+                schema=vol.Schema(mix_update_fields),
+            )
+            _LOGGER.info("Registered service: update_time_segment_mix")
+
+        if not hass.services.has_service(DOMAIN, "read_time_segments_mix"):
+            hass.services.async_register(
+                DOMAIN,
+                "read_time_segments_mix",
+                handle_read_time_segments_mix,
+                schema=vol.Schema(read_time_segments_fields),
+                supports_response=SupportsResponse.ONLY,
+            )
+            _LOGGER.info("Registered service: read_time_segments_mix")
 
 
 async def async_unload_entry(
