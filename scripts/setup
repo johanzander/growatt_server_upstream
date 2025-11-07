@@ -5,5 +5,3 @@ set -e
 cd "$(dirname "$0")/.."
 
 python3 -m pip install --requirement requirements.txt
-
-# python 3 -m pip install git+https://github.com/GraemeDBlue/PyPi_GrowattServer@write_values
