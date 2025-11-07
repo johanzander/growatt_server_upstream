@@ -323,7 +323,7 @@ async def async_setup_entry(
         if device_coordinator.api_version == "v1":
             if device_coordinator.device_type == "mix":
                 # Add time entities for MIX devices (first charge/discharge segment)
-                # You can extend this to create entities for all 6 segments
+                # Order: charge start/end, then discharge start/end
                 entities.extend(
                     [
                         GrowattChargeStartTimeEntity(device_coordinator, segment_id=1),
@@ -336,8 +336,7 @@ async def async_setup_entry(
                 )
             elif device_coordinator.device_type == "tlx":
                 # Add time entities for TLX devices (first segment)
-                # TLX uses the same entities but different field names
-                # You can extend this to create entities for all 9 segments
+                # Order: charge start/end, then discharge start/end
                 entities.extend(
                     [
                         GrowattChargeStartTimeEntity(device_coordinator, segment_id=1),

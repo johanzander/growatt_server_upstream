@@ -268,20 +268,26 @@
     "switch": {
       "ac_charge": {
         "name": "Charge from Grid"
+      },
+      "charge_period_1_enabled": {
+        "name": "Charge period 1 enabled"
+      },
+      "discharge_period_1_enabled": {
+        "name": "Discharge period 1 enabled"
       }
     },
     "time": {
       "charge_start_time": {
-        "name": "Charge start time"
+        "name": "1. Charge start time"
       },
       "charge_end_time": {
-        "name": "Charge end time"
+        "name": "2. Charge end time"
       },
       "discharge_start_time": {
-        "name": "Discharge start time"
+        "name": "3. Discharge start time"
       },
       "discharge_end_time": {
-        "name": "Discharge end time"
+        "name": "4. Discharge end time"
       }
     }
   }
