@@ -568,6 +568,21 @@
       "ac_charge": {
         "name": "Charge from Grid"
       }
+    },
+    "time": {
+      "charge_start_time": {
+        "name": "Charge start time"
+      },
+      "charge_end_time": {
+        "name": "Charge end time"
+      },
+      "discharge_start_time": {
+        "name": "Discharge start time"
+      },
+      "discharge_end_time": {
+        "name": "Discharge end time"
+      }
     }
   }
+
 

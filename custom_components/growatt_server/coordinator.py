@@ -130,15 +130,77 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # todayEnergy -> today_energy
                 # totalEnergy -> total_energy
                 # invTodayPpv -> current_power
-                # Ensure plant_energy_overview is only called on OpenApiV1
-                if hasattr(self.api, "plant_energy_overview"):
-                    total_info = self.api.plant_energy_overview(self.plant_id)
-                    total_info["todayEnergy"] = total_info.get("today_energy")
-                    total_info["totalEnergy"] = total_info.get("total_energy")
-                    total_info["invTodayPpv"] = total_info.get("current_power")
-                else:
-                    msg = "plant_energy_overview is not available for this API class"
-                    raise AttributeError(msg)
+                try:
+                    if hasattr(self.api, "plant_energy_overview"):
+                        _LOGGER.debug(
+                            "Fetching plant_energy_overview for plant_id=%s",
+                            self.plant_id,
+                        )
+                        total_info = self.api.plant_energy_overview(self.plant_id)
+                        total_info["todayEnergy"] = total_info.get("today_energy")
+                        total_info["totalEnergy"] = total_info.get("total_energy")
+                        total_info["invTodayPpv"] = total_info.get("current_power")
+                    else:
+                        msg = (
+                            "plant_energy_overview is not available for this API class"
+                        )
+                        _LOGGER.error(msg)
+                        raise AttributeError(msg)
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.error(
+                        "Error fetching plant_energy_overview for plant %s: %s. Attempting fallback to plant list.",
+                        self.plant_id,
+                        err,
+                    )
+                    # Fallback: Try to get plant info from plant list
+                    try:
+                        plant_list = self.api.plant_list()
+                        _LOGGER.debug("Plant list response: %s", plant_list)
+
+                        # Find the matching plant
+                        matching_plant = None
+                        if isinstance(plant_list, dict):
+                            plants = plant_list.get(
+                                "plants", plant_list.get("data", [])
+                            )
+                        else:
+                            plants = plant_list if isinstance(plant_list, list) else []
+
+                        for plant in plants:
+                            if str(plant.get("plant_id")) == str(self.plant_id):
+                                matching_plant = plant
+                                break
+
+                        if matching_plant:
+                            _LOGGER.info(
+                                "Found plant in plant list, using data from there"
+                            )
+                            total_info = {
+                                "todayEnergy": matching_plant.get("today_energy", 0),
+                                "totalEnergy": matching_plant.get("total_energy", 0),
+                                "invTodayPpv": matching_plant.get("current_power", 0),
+                                "plant_name": matching_plant.get("plant_name", ""),
+                            }
+                        else:
+                            _LOGGER.warning(
+                                "Could not find plant %s in plant list. Using empty data.",
+                                self.plant_id,
+                            )
+                            total_info = {
+                                "todayEnergy": 0,
+                                "totalEnergy": 0,
+                                "invTodayPpv": 0,
+                            }
+                    except Exception as fallback_err:
+                        _LOGGER.exception(
+                            "Fallback plant list fetch also failed: %s", fallback_err
+                        )
+                        # Return minimal data structure to prevent integration failure
+                        total_info = {
+                            "todayEnergy": 0,
+                            "totalEnergy": 0,
+                            "invTodayPpv": 0,
+                        }
             else:
                 # Classic API: use plant_info as before
                 total_info = self.api.plant_info(self.device_id)
@@ -188,10 +250,81 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
         elif self.device_type == "mix":
             if self.api_version == "v1":
-                # Open API V1: min device
+                # Open API V1: mix/sph device
                 try:
+                    _LOGGER.debug(
+                        "Fetching device_details for MIX device %s", self.device_id
+                    )
                     mix_details = self.api.device_details(
                         self.device_id, DeviceType.SPH_MIX
+                    )
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.error(
+                        "Error fetching device_details for MIX device %s: %s. Attempting fallback to device list.",
+                        self.device_id,
+                        err,
+                    )
+                    # Fallback: Try to get device info from device list
+                    try:
+                        device_list = self.api.device_list(self.plant_id)
+                        _LOGGER.debug("Device list response: %s", device_list)
+
+                        # Find the matching device
+                        matching_device = None
+                        if isinstance(device_list, dict):
+                            devices = device_list.get(
+                                "devices", device_list.get("data", [])
+                            )
+                        else:
+                            devices = (
+                                device_list if isinstance(device_list, list) else []
+                            )
+
+                        for device in devices:
+                            if str(device.get("device_sn")) == str(self.device_id):
+                                matching_device = device
+                                break
+
+                        if matching_device:
+                            _LOGGER.info(
+                                "Found device in device list, using basic data from there"
+                            )
+                            mix_details = {
+                                "device_sn": matching_device.get(
+                                    "device_sn", self.device_id
+                                ),
+                                "device_type": matching_device.get(
+                                    "device_type", "mix"
+                                ),
+                                "lost": matching_device.get("lost", False),
+                                "status": matching_device.get("status", 0),
+                            }
+                        else:
+                            _LOGGER.warning(
+                                "Could not find device %s in device list. Using minimal data.",
+                                self.device_id,
+                            )
+                            mix_details = {
+                                "device_sn": self.device_id,
+                                "device_type": "mix",
+                                "lost": False,
+                                "status": 0,
+                            }
+                    except Exception as fallback_err:
+                        _LOGGER.exception(
+                            "Fallback device list fetch also failed: %s", fallback_err
+                        )
+                        # Return minimal data structure to prevent integration failure
+                        mix_details = {
+                            "device_sn": self.device_id,
+                            "device_type": "mix",
+                            "lost": False,
+                            "status": 0,
+                        }
+
+                try:
+                    _LOGGER.debug(
+                        "Fetching device_energy for MIX device %s", self.device_id
                     )
                     mix_energy = self.api.device_energy(
                         self.device_id, DeviceType.SPH_MIX
@@ -213,46 +346,91 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     mix_energy["accdischargePowerKW"] = (
                         mix_energy.get("accdischargePower", 0) / 1000
                     )  # W to kW
-
-                    mix_info = {**mix_details, **mix_energy}
-                    self.data = mix_info
-                    _LOGGER.debug(
-                        "mix_info for device %s: %r", self.device_id, mix_info
-                    )
                 except growattServer.GrowattV1ApiError as err:
-                    _LOGGER.exception(
-                        "Error fetching mix device data for %s", self.device_id
+                    _LOGGER.error(
+                        "Error fetching device_energy for device %s: %s. Using empty energy data.",
+                        self.device_id,
+                        err,
                     )
-                    msg = f"Error fetching {self.device_type} device data: {err}"
-                    raise UpdateFailed(msg) from err
+                    mix_energy = {}
+                    mix_details["lastdataupdate"] = None
+                except Exception as err:
+                    _LOGGER.exception(
+                        "Unexpected error fetching device_energy for device %s: %s",
+                        self.device_id,
+                        err,
+                    )
+                    mix_energy = {}
+                    mix_details["lastdataupdate"] = None
+
+                # Merge all the data
+                mix_info = {**mix_details, **mix_energy}
+                self.data = mix_info
+                _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
             else:
                 mix_info = self.api.mix_info(self.device_id)
                 mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
-                mix_system_status = self.api.mix_system_status(
-                    self.device_id, self.plant_id
-                )
-                mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
 
-                # Get the chart data and work out the time of the last entry
-                mix_chart_entries = mix_detail["chartData"]
-                sorted_keys = sorted(mix_chart_entries)
+                # Fetch mix_system_status with error handling
+                try:
+                    _LOGGER.debug(
+                        "Fetching mix_system_status for device %s", self.device_id
+                    )
+                    mix_system_status = self.api.mix_system_status(
+                        self.device_id, self.plant_id
+                    )
+                except Exception as err:
+                    _LOGGER.error(
+                        "Error fetching mix_system_status for device %s: %s. Using empty data.",
+                        self.device_id,
+                        err,
+                    )
+                    mix_system_status = {}
 
-                # Create datetime from the latest entry
-                date_now = dt_util.now().date()
-                last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
-                mix_detail["lastdataupdate"] = datetime.datetime.combine(
-                    date_now,
-                    last_updated_time,  # type: ignore[arg-type]
-                    dt_util.get_default_time_zone(),
-                )
+                # Fetch mix_detail with error handling
+                try:
+                    _LOGGER.debug("Fetching mix_detail for device %s", self.device_id)
+                    mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
+
+                    # Get the chart data and work out the time of the last entry
+                    mix_chart_entries = mix_detail.get("chartData", {})
+                    if mix_chart_entries:
+                        sorted_keys = sorted(mix_chart_entries)
+
+                        # Create datetime from the latest entry
+                        date_now = dt_util.now().date()
+                        last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
+                        mix_detail["lastdataupdate"] = datetime.datetime.combine(
+                            date_now,
+                            last_updated_time,  # type: ignore[arg-type]
+                            dt_util.get_default_time_zone(),
+                        )
+                    else:
+                        mix_detail["lastdataupdate"] = None
+                except Exception as err:
+                    _LOGGER.error(
+                        "Error fetching mix_detail for device %s: %s. Using empty data.",
+                        self.device_id,
+                        err,
+                    )
+                    mix_detail = {"lastdataupdate": None}
 
                 # Dashboard data for mix system
-                dashboard_data = self.api.dashboard_data(self.plant_id)
-                dashboard_values_for_mix = {
-                    "etouser_combined": float(
-                        dashboard_data["etouser"].replace("kWh", "")
+                try:
+                    dashboard_data = self.api.dashboard_data(self.plant_id)
+                    dashboard_values_for_mix = {
+                        "etouser_combined": float(
+                            dashboard_data["etouser"].replace("kWh", "")
+                        )
+                    }
+                except Exception as err:
+                    _LOGGER.error(
+                        "Error fetching dashboard_data for device %s: %s. Using empty data.",
+                        self.device_id,
+                        err,
                     )
-                }
+                    dashboard_values_for_mix = {}
+
                 self.data = {
                     **mix_info,
                     **mix_totals,

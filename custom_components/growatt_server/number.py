@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
-from growattServer import GrowattV1ApiError
+from growattServer import GrowattV1ApiError, DeviceType
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.const import PERCENTAGE
@@ -162,10 +162,10 @@ class GrowattNumber(CoordinatorEntity[GrowattCoordinator], NumberEntity):
             # Use V1 API to write parameter
             await self.hass.async_add_executor_job(
                 self.coordinator.api.write_parameter,
-                self.coordinator.device_type,
                 self.coordinator.device_id,
+                DeviceType.SPH_MIX,
                 parameter_id,
-                int(value),
+                value,
             )
 
             _LOGGER.debug(

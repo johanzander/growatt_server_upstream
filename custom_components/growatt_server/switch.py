@@ -8,11 +8,13 @@ import logging
 from re import S
 from typing import Any
 
+import voluptuous as vol
 from growattServer import GrowattV1ApiError, DeviceType
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -274,5 +276,22 @@ async def async_setup_entry(
                 for description in MIN_SWITCH_TYPES
             )
 
-
     async_add_entities(entities)
+
+    # Register service with custom fields for turn_on
+    platform = entity_platform.async_get_current_platform()
+
+    platform.async_register_entity_service(
+        "turn_on",
+        {
+            vol.Optional("start_time"): cv.time,
+            vol.Optional("end_time"): cv.time,
+            vol.Optional("charge_power"): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=100)
+            ),
+            vol.Optional("charge_stop_soc"): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=100)
+            ),
+        },
+        "async_turn_on",
+    )
