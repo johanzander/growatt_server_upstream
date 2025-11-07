@@ -12,6 +12,7 @@ import voluptuous as vol
 from growattServer import GrowattV1ApiError, DeviceType
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, entity_platform
@@ -73,6 +74,7 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
     """Representation of a Growatt switch."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
     entity_description: GrowattSwitchEntityDescription
     _pending_state: bool | None = None
     _charge_start_time: time | None = None
