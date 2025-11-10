@@ -1,7 +1,8 @@
 """The Growatt server PV inverter sensor integration."""
 
 import asyncio
-from datetime import datetime, time
+from datetime import datetime
+from datetime import time as dt_time
 import logging
 from collections.abc import Mapping
 
@@ -19,10 +20,6 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
-# import sys
-# from .growattServer import growattserver
-
-# sys.modules["growattserver"] = growattserver
 import growattServer
 
 from .const import (
@@ -566,8 +563,8 @@ async def _async_register_services(
 
         # Convert time strings to datetime.time objects
         try:
-            start_time = time.fromisoformat(start_time_str)
-            end_time = time.fromisoformat(end_time_str)
+            start_time = dt_time.fromisoformat(start_time_str)
+            end_time = dt_time.fromisoformat(end_time_str)
         except ValueError as err:
             _LOGGER.error("Start_time and end_time must be in HH:MM format")
             raise HomeAssistantError(
@@ -651,8 +648,8 @@ async def _async_register_services(
 
         # Convert time strings to datetime.time objects
         try:
-            start_time = time.fromisoformat(start_time_str)
-            end_time = time.fromisoformat(end_time_str)
+            start_time = dt_time.fromisoformat(start_time_str)
+            end_time = dt_time.fromisoformat(end_time_str)
         except ValueError as err:
             _LOGGER.error("Start_time and end_time must be in HH:MM format")
             raise HomeAssistantError(
@@ -720,8 +717,8 @@ async def _async_register_services(
 
         # Convert time strings to datetime.time objects
         try:
-            start_time = time.fromisoformat(start_time_str)
-            end_time = time.fromisoformat(end_time_str)
+            start_time = dt_time.fromisoformat(start_time_str)
+            end_time = dt_time.fromisoformat(end_time_str)
         except ValueError as err:
             _LOGGER.error("Start_time and end_time must be in HH:MM format")
             raise HomeAssistantError(
