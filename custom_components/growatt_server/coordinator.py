@@ -5,8 +5,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-import growattServer
-from growattServer import DeviceType
+from growattServer import DeviceType, OpenApiV1, GrowattApi, GrowattV1ApiError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -58,12 +57,12 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.password = None
             self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
             self.token = config_entry.data["token"]
-            self.api = growattServer.OpenApiV1(token=self.token)
+            self.api = OpenApiV1(token=self.token)
         elif self.api_version == "classic":
             self.username = config_entry.data.get(CONF_USERNAME)
             self.password = config_entry.data[CONF_PASSWORD]
             self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
-            self.api = growattServer.GrowattApi(
+            self.api = GrowattApi(
                 add_random_user_id=True, agent_identifier=self.username
             )
             self.api.server_url = self.url
@@ -146,7 +145,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         )
                         _LOGGER.error(msg)
                         raise AttributeError(msg)
-                except growattServer.GrowattV1ApiError as err:
+                except GrowattV1ApiError as err:
                     _LOGGER.error(
                         "Error fetching plant_energy_overview for plant %s: %s. Attempting fallback to plant list.",
                         self.plant_id,
@@ -225,7 +224,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 self.data = min_info
                 _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
-            except growattServer.GrowattV1ApiError as err:
+            except GrowattV1ApiError as err:
                 _LOGGER.exception(
                     "Error fetching min device data for %s", self.device_id
                 )
@@ -258,7 +257,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     mix_details = self.api.device_details(
                         self.device_id, DeviceType.SPH_MIX
                     )
-                except growattServer.GrowattV1ApiError as err:
+                except GrowattV1ApiError as err:
                     _LOGGER.error(
                         "Error fetching device_details for MIX device %s: %s. Attempting fallback to device list.",
                         self.device_id,
@@ -346,7 +345,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     mix_energy["accdischargePowerKW"] = (
                         mix_energy.get("accdischargePower", 0) / 1000
                     )  # W to kW
-                except growattServer.GrowattV1ApiError as err:
+                except GrowattV1ApiError as err:
                     _LOGGER.error(
                         "Error fetching device_energy for device %s: %s. Using empty energy data.",
                         self.device_id,
@@ -581,7 +580,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if self.device_type == "tlx":
             # MIN_TLX device - use TimeSegmentParams
-            device_type = growattServer.DeviceType.MIN_TLX
+            device_type = DeviceType.MIN_TLX
             params = self.api.TimeSegmentParams(
                 segment_id=segment_id,
                 batt_mode=batt_mode,
@@ -594,7 +593,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         elif self.device_type == "mix":
             # SPH_MIX device - different commands based on battery mode
-            device_type = growattServer.DeviceType.SPH_MIX
+            device_type = DeviceType.SPH_MIX
 
             if batt_mode == BATT_MODE_BATTERY_FIRST:
                 # Battery first mode - AC charge time period
@@ -801,7 +800,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             response = await self.hass.async_add_executor_job(
                 self.api.read_time_segments,
                 self.device_id,
-                growattServer.DeviceType.MIN_TLX,
+                DeviceType.MIN_TLX,
             )
 
             _LOGGER.debug(
