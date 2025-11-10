@@ -8,7 +8,7 @@
   "issue_tracker": "https://github.com/johanzander/growatt_server_upstream/issues",
   "loggers": ["growattServer"],
   "requirements": [
-    "git+https://github.com/GraemeDBlue/PyPi_GrowattServer.git@write_values#egg=GrowattServer"
+    "git+https://github.com/GraemeDBlue/PyPi_GrowattServer.git@write_values"
   ],
   "version": "2.2.0"
 }
