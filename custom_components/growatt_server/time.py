@@ -16,9 +16,29 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import GrowattConfigEntry, GrowattCoordinator
-from .growattServer.open_api_v1 import DeviceFieldTemplates
 
 _LOGGER = logging.getLogger(__name__)
+
+# Field name templates for different device types
+# MIN/TLX devices use numbered time segment fields
+MIN_TLX_FIELD_TEMPLATES = {
+    "start_time": "timeSegmentStart{segment_id}",
+    "stop_time": "timeSegmentStop{segment_id}",
+    "enabled": "timeSegmentEnabled{segment_id}",
+}
+
+# MIX/SPH devices use different field names for charge and discharge
+SPH_MIX_CHARGE_FIELD_TEMPLATES = {
+    "start_time": "forcedChargeTimeStart{segment_id}",
+    "stop_time": "forcedChargeTimeStop{segment_id}",
+    "enabled": "forcedChargeStopSwitch{segment_id}",
+}
+
+SPH_MIX_DISCHARGE_FIELD_TEMPLATES = {
+    "start_time": "forcedDischargeTimeStart{segment_id}",
+    "stop_time": "forcedDischargeTimeStop{segment_id}",
+    "enabled": "forcedDischargeStopSwitch{segment_id}",
+}
 
 
 class GrowattChargeStartTimeEntity(CoordinatorEntity[GrowattCoordinator], TimeEntity):
@@ -42,9 +62,9 @@ class GrowattChargeStartTimeEntity(CoordinatorEntity[GrowattCoordinator], TimeEn
     def _get_field_name(self, field_type: str) -> str:
         """Get the appropriate field name based on device type."""
         if self.coordinator.device_type == "tlx":
-            template = DeviceFieldTemplates.MIN_TLX_TEMPLATES[field_type]
+            template = MIN_TLX_FIELD_TEMPLATES[field_type]
         else:  # mix
-            template = DeviceFieldTemplates.SPH_MIX_TEMPLATES_CHARGE[field_type]
+            template = SPH_MIX_CHARGE_FIELD_TEMPLATES[field_type]
         return template.format(segment_id=self._segment_id)
 
     @property
@@ -109,9 +129,9 @@ class GrowattChargeEndTimeEntity(CoordinatorEntity[GrowattCoordinator], TimeEnti
     def _get_field_name(self, field_type: str) -> str:
         """Get the appropriate field name based on device type."""
         if self.coordinator.device_type == "tlx":
-            template = DeviceFieldTemplates.MIN_TLX_TEMPLATES[field_type]
+            template = MIN_TLX_FIELD_TEMPLATES[field_type]
         else:  # mix
-            template = DeviceFieldTemplates.SPH_MIX_TEMPLATES_CHARGE[field_type]
+            template = SPH_MIX_CHARGE_FIELD_TEMPLATES[field_type]
         return template.format(segment_id=self._segment_id)
 
     @property
@@ -179,9 +199,9 @@ class GrowattDischargeStartTimeEntity(
     def _get_field_name(self, field_type: str) -> str:
         """Get the appropriate field name based on device type."""
         if self.coordinator.device_type == "tlx":
-            template = DeviceFieldTemplates.MIN_TLX_TEMPLATES[field_type]
+            template = MIN_TLX_FIELD_TEMPLATES[field_type]
         else:  # mix
-            template = DeviceFieldTemplates.SPH_MIX_TEMPLATES_DIS_CHARGE[field_type]
+            template = SPH_MIX_DISCHARGE_FIELD_TEMPLATES[field_type]
         return template.format(segment_id=self._segment_id)
 
     @property
@@ -256,9 +276,9 @@ class GrowattDischargeEndTimeEntity(CoordinatorEntity[GrowattCoordinator], TimeE
     def _get_field_name(self, field_type: str) -> str:
         """Get the appropriate field name based on device type."""
         if self.coordinator.device_type == "tlx":
-            template = DeviceFieldTemplates.MIN_TLX_TEMPLATES[field_type]
+            template = MIN_TLX_FIELD_TEMPLATES[field_type]
         else:  # mix
-            template = DeviceFieldTemplates.SPH_MIX_TEMPLATES_DIS_CHARGE[field_type]
+            template = SPH_MIX_DISCHARGE_FIELD_TEMPLATES[field_type]
         return template.format(segment_id=self._segment_id)
 
     @property
