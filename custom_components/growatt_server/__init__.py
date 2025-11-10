@@ -19,10 +19,11 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
-import sys
-from .growattServer import growattserver
+# import sys
+# from .growattServer import growattserver
 
-sys.modules["growattserver"] = growattserver
+# sys.modules["growattserver"] = growattserver
+import growattServer
 
 from .const import (
     BATT_MODE_MAP,
