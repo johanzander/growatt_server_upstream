@@ -7,6 +7,8 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/johanzander/growatt_server_upstream/issues",
   "loggers": ["growattServer"],
-  "requirements": ["growattServer @ git+https://github.com/GraemeDBlue/PyPi_GrowattServer.git@write_values"],
+  "requirements": [
+    "git+https://github.com/GraemeDBlue/PyPi_GrowattServer.git@write_values#egg=GrowattServer"
+  ],
   "version": "2.2.0"
 }
