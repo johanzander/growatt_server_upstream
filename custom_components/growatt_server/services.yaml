@@ -1,9 +1,63 @@
 # Service definitions for Growatt Server integration
-# Schemas are defined dynamically in code (__init__.py) using selectors
 
-update_time_segment:
+turn_on:
+  name: Turn on
+  description: Turn on the switch with optional charge time configuration
+  target:
+    entity:
+      integration: growatt_server
+      domain: switch
   fields:
+    start_time:
+      name: Start time
+      description: When to start AC charging
+      required: false
+      example: "14:00:00"
+      selector:
+        time:
+    end_time:
+      name: End time
+      description: When to stop AC charging
+      required: false
+      example: "16:00:00"
+      selector:
+        time:
+    charge_power:
+      name: Charge power
+      description: Charging power percentage (0-100)
+      required: false
+      example: 80
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    charge_stop_soc:
+      name: Charge stop SOC
+      description: Battery state of charge percentage to stop charging at (0-100)
+      required: false
+      example: 95
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+
+# MIN_TLX specific service
+update_time_segment_tlx:
+  name: Update TLX Time Segment
+  description: Update a time-of-use (TOU) segment for MIN_TLX inverters
+  fields:
+    device_id:
+      name: Device ID
+      description: Device serial number (optional if only one TLX device)
+      required: false
+      example: "ABC123DEF456"
+      selector:
+        text:
     segment_id:
+      name: Segment ID
+      description: Time segment number (1-9)
       required: true
       example: 1
       selector:
@@ -12,6 +66,158 @@ update_time_segment:
           max: 9
           mode: box
     batt_mode:
+      name: Battery mode
+      description: Operating mode for this time segment
+      required: true
+      example: "load-first"
+      selector:
+        select:
+          options:
+            - label: Load First
+              value: "load-first"
+            - label: Battery First
+              value: "battery-first"
+            - label: Grid First
+              value: "grid-first"
+    start_time:
+      name: Start time
+      description: Segment start time
+      required: true
+      example: "08:00"
+      selector:
+        time:
+    end_time:
+      name: End time
+      description: Segment end time
+      required: true
+      example: "12:00"
+      selector:
+        time:
+    enabled:
+      name: Enabled
+      description: Whether this segment is active
+      required: true
+      example: true
+      selector:
+        boolean:
+
+# SPH_MIX specific service
+update_time_segment_mix:
+  name: Update MIX Time Segment
+  description: Update a time-of-use (TOU) segment for SPH_MIX inverters
+  fields:
+    device_id:
+      name: Device ID
+      description: Device serial number (optional if only one MIX device)
+      required: false
+      example: "EGM2H4L0G0"
+      selector:
+        text:
+    segment_id:
+      name: Time Period ID
+      description: Time period number (1-3)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 3
+          mode: box
+    batt_mode:
+      name: Battery mode
+      description: Operating mode for this time period
+      required: true
+      example: "battery-first"
+      selector:
+        select:
+          options:
+            - label: Load First (Export)
+              value: "load-first"
+            - label: Battery First (Charge)
+              value: "battery-first"
+            - label: Grid First (Discharge)
+              value: "grid-first"
+    start_time:
+      name: Start time
+      description: Period start time
+      required: true
+      example: "08:00"
+      selector:
+        time:
+    end_time:
+      name: End time
+      description: Period end time
+      required: true
+      example: "12:00"
+      selector:
+        time:
+    enabled:
+      name: Enabled
+      description: Whether this period is active
+      required: true
+      example: true
+      selector:
+        boolean:
+    charge_power:
+      name: Charge/Discharge Power
+      description: Power percentage for charging (battery-first) or discharging (grid-first) (0-100%)
+      required: false
+      default: 80
+      example: 80
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    charge_stop_soc:
+      name: Stop SOC
+      description: Battery SOC to stop at (charge up to % for battery-first, discharge down to % for grid-first)
+      required: false
+      default: 95
+      example: 95
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    mains_enabled:
+      name: Mains enabled
+      description: Enable mains/grid connection for this operation
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean:
+
+# Legacy combined service (deprecated - use specific services above)
+update_time_segment:
+  name: Update time segment
+  description: Update a time-of-use (TOU) segment for MIN_TLX or SPH_MIX inverters
+  fields:
+    device_id:
+      name: Device ID
+      description: Device serial number (optional if only one V1 device)
+      required: false
+      example: "EGM2H4L0G0"
+      selector:
+        text:
+    segment_id:
+      name: Segment ID
+      description: Time segment number (1-9)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 9
+          mode: box
+    batt_mode:
+      name: Battery mode
+      description: Operating mode for this time segment
       required: true
       example: "load-first"
       selector:
@@ -21,29 +227,91 @@ update_time_segment:
             - "battery-first"
             - "grid-first"
     start_time:
+      name: Start time
+      description: Segment start time
       required: true
       example: "08:00"
       selector:
         time:
     end_time:
+      name: End time
+      description: Segment end time
       required: true
       example: "12:00"
       selector:
         time:
     enabled:
+      name: Enabled
+      description: Whether this segment is active
       required: true
       example: true
       selector:
         boolean:
+    charge_power:
+      name: Charge power
+      description: Charging power percentage (SPH_MIX only, 0-100)
+      required: false
+      example: 80
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    charge_stop_soc:
+      name: Charge stop SOC
+      description: Battery SOC to stop charging at (SPH_MIX only, 0-100)
+      required: false
+      example: 95
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    mains_enabled:
+      name: Mains enabled
+      description: Enable mains charging (SPH_MIX only)
+      required: false
+      example: true
+      selector:
+        boolean:
+
+# Device-specific read services
+read_time_segments_tlx:
+  name: Read time segments (TLX)
+  description: Read all time-of-use (TOU) segments from MIN_TLX inverter
+  fields:
     device_id:
+      name: Device ID
+      description: Device serial number (optional if only one TLX device)
       required: false
       example: "MIN12345"
       selector:
         text:
 
-read_time_segments:
+read_time_segments_mix:
+  name: Read time segments (MIX)
+  description: Read all time-of-use (TOU) segments from SPH_MIX inverter
   fields:
     device_id:
+      name: Device ID
+      description: Device serial number (optional if only one MIX device)
+      required: false
+      example: "EGM2H4L0G0"
+      selector:
+        text:
+
+# Legacy combined service (deprecated - use specific services above)
+read_time_segments:
+  name: Read time segments
+  description: Read all time-of-use (TOU) segments from the inverter
+  fields:
+    device_id:
+      name: Device ID
+      description: Optional device serial number (uses current device if not specified)
       required: false
       example: "MIN12345"
       selector:

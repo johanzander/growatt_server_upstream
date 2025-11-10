@@ -9,40 +9,50 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core. From version 1.5.0 it should be compatible with the [Growatt BESS (Battery Energy Storage System) Manager][bess]
 
-## Features (v1.5.0)
+## Features (v2.2.0)
 
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 
 **Changes from Base Version**:
 
 1. `manifest.json` updated for custom component distribution
-2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX devices
-3. [MIN inverter control][pr-153468] - Number and switch entities for controlling inverter settings
-4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
-5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
-6. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
-7. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
+2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX/MIX devices
+3. [MIN inverter control][pr-153468] - Number, switch, and time entities for controlling inverter settings
+4. **MIX/SPH inverter control** - Full support for charge/discharge power, SOC limits, and time-of-use scheduling
+5. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
+6. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
+7. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
+8. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
 monitoring
-8. Proper implementation of read / write Time Of Use (TOU) settings using service calls:
+9. Proper implementation of read / write Time Of Use (TOU) settings using service calls:
   `growattserver.read_time_segments,
   growattserver.update_time_segment`
 
-### MIN/TLX Inverter Control Features (V1 API)
+### MIN/TLX/MIX Inverter Control Features (V1 API)
 
-When using token authentication with MIN/TLX inverters, you get:
+When using token authentication with MIN/TLX or MIX/SPH inverters, you get:
 
-**Number Entities** (0-100%):
+**Number Entities**:
 
-- Charge power
-- Charge stop SOC
-- Discharge power
-- Discharge stop SOC
+- Charge power (W)
+- Charge stop SOC (%)
+- Discharge power (W)
+- Discharge stop SOC (%)
 
 **Switch Entities**:
 
 - AC charge enable/disable
+- Charge period 1 enabled
+- Discharge period 1 enabled
 
-All control entities provide real-time feedback and proper error handling.
+**Time Entities**:
+
+- 1. Charge start time
+- 2. Charge end time
+- 3. Discharge start time
+- 4. Discharge end time
+
+All control entities provide real-time feedback and proper error handling. MIX/SPH devices support full time-of-use (TOU) scheduling with separate charge and discharge periods.
 
 ### Enhanced TLX Sensor Coverage (v1.4.6)
 

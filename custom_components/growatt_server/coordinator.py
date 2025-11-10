@@ -5,9 +5,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from . import growattServer
-from .growattServer import DeviceType
-
+import growattServer
+from growattServer import DeviceType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -15,7 +14,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_URL, DOMAIN
+from .const import (
+    BATT_MODE_BATTERY_FIRST,
+    BATT_MODE_GRID_FIRST,
+    BATT_MODE_LOAD_FIRST,
+    DEFAULT_URL,
+    DOMAIN,
+)
 from .models import GrowattRuntimeData
 
 if TYPE_CHECKING:
@@ -26,6 +31,7 @@ type GrowattConfigEntry = ConfigEntry[GrowattRuntimeData]
 SCAN_INTERVAL = datetime.timedelta(minutes=5)
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator to manage Growatt data fetching."""
@@ -62,7 +68,8 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self.api.server_url = self.url
         else:
-            raise ValueError(f"Unknown API version: {self.api_version}")
+            msg = f"Unknown API version: {self.api_version}"
+            raise ValueError(msg)
 
         super().__init__(
             hass,
@@ -91,7 +98,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     try:
                         total_pv_today += float(data[pv_key])
                     except (ValueError, TypeError):
-                        _LOGGER.debug("Could not convert %s to float: %s", pv_key, data[pv_key])
+                        _LOGGER.debug(
+                            "Could not convert %s to float: %s", pv_key, data[pv_key]
+                        )
 
             data["epvToday"] = total_pv_today
             _LOGGER.debug(
@@ -113,10 +122,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.device_type == "total":
             if self.api_version == "v1":
                 # # Plant info
-                # plants = self.api.plant_list()
-                # _LOGGER.debug("Plants: Found %s plants", plants['count'])
-                # plant_id = plants['plants'][0]['plant_id']
-                # _LOGGER.debug("Plant: id %s plants", plant_id)
                 # The V1 Plant APIs do not provide the same information as the classic plant_info() API
                 # More specifically:
                 # 1. There is no monetary information to be found, so today and lifetime money is not available
@@ -125,10 +130,77 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # todayEnergy -> today_energy
                 # totalEnergy -> total_energy
                 # invTodayPpv -> current_power
-                total_info = self.api.plant_energy_overview(self.plant_id)
-                total_info["todayEnergy"] = total_info["today_energy"]
-                total_info["totalEnergy"] = total_info["total_energy"]
-                total_info["invTodayPpv"] = total_info["current_power"]
+                try:
+                    if hasattr(self.api, "plant_energy_overview"):
+                        _LOGGER.debug(
+                            "Fetching plant_energy_overview for plant_id=%s",
+                            self.plant_id,
+                        )
+                        total_info = self.api.plant_energy_overview(self.plant_id)
+                        total_info["todayEnergy"] = total_info.get("today_energy")
+                        total_info["totalEnergy"] = total_info.get("total_energy")
+                        total_info["invTodayPpv"] = total_info.get("current_power")
+                    else:
+                        msg = (
+                            "plant_energy_overview is not available for this API class"
+                        )
+                        _LOGGER.error(msg)
+                        raise AttributeError(msg)
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.error(
+                        "Error fetching plant_energy_overview for plant %s: %s. Attempting fallback to plant list.",
+                        self.plant_id,
+                        err,
+                    )
+                    # Fallback: Try to get plant info from plant list
+                    try:
+                        plant_list = self.api.plant_list()
+                        _LOGGER.debug("Plant list response: %s", plant_list)
+
+                        # Find the matching plant
+                        matching_plant = None
+                        if isinstance(plant_list, dict):
+                            plants = plant_list.get(
+                                "plants", plant_list.get("data", [])
+                            )
+                        else:
+                            plants = plant_list if isinstance(plant_list, list) else []
+
+                        for plant in plants:
+                            if str(plant.get("plant_id")) == str(self.plant_id):
+                                matching_plant = plant
+                                break
+
+                        if matching_plant:
+                            _LOGGER.info(
+                                "Found plant in plant list, using data from there"
+                            )
+                            total_info = {
+                                "todayEnergy": matching_plant.get("today_energy", 0),
+                                "totalEnergy": matching_plant.get("total_energy", 0),
+                                "invTodayPpv": matching_plant.get("current_power", 0),
+                                "plant_name": matching_plant.get("plant_name", ""),
+                            }
+                        else:
+                            _LOGGER.warning(
+                                "Could not find plant %s in plant list. Using empty data.",
+                                self.plant_id,
+                            )
+                            total_info = {
+                                "todayEnergy": 0,
+                                "totalEnergy": 0,
+                                "invTodayPpv": 0,
+                            }
+                    except Exception as fallback_err:
+                        _LOGGER.exception(
+                            "Fallback plant list fetch also failed: %s", fallback_err
+                        )
+                        # Return minimal data structure to prevent integration failure
+                        total_info = {
+                            "todayEnergy": 0,
+                            "totalEnergy": 0,
+                            "invTodayPpv": 0,
+                        }
             else:
                 # Classic API: use plant_info as before
                 total_info = self.api.plant_info(self.device_id)
@@ -154,10 +226,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.data = min_info
                 _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
             except growattServer.GrowattV1ApiError as err:
-                _LOGGER.error(
-                    "Error fetching min device data for %s: %s", self.device_id, err
+                _LOGGER.exception(
+                    "Error fetching min device data for %s", self.device_id
                 )
-                raise UpdateFailed(f"Error fetching min device data: {err}") from err
+                msg = f"Error fetching min device data: {err}"
+                raise UpdateFailed(msg) from err
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
             self.data = tlx_info["data"]
@@ -177,60 +250,187 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
         elif self.device_type == "mix":
             if self.api_version == "v1":
-                # Open API V1: min device
+                # Open API V1: mix/sph device
                 try:
-                    mix_details = self.api.device_details(self.device_id , DeviceType.MIX_SPH)
-                    mix_energy = self.api.device_energy(self.device_id, DeviceType.MIX_SPH)
-
-
-                    date_str = mix_energy.get("time")
-                    date_format = '%Y-%m-%d %H:%M:%S'
-                    # Parse the date string into a naive datetime object
-                    naive_dt = datetime.datetime.strptime(date_str, date_format)
-                    # Attach the timezone from dt_util.get_default_time_zone()
-                    tz = dt_util.get_default_time_zone()
-                    aware_dt = tz.localize(naive_dt)
-                    last_updated_time = aware_dt.time()
-                    
-                    mix_detail["lastdataupdate"] = last_updated_time
-                    _LOGGER.error(
-                        "MIX DETAILS for %s -> %s", mix_details, last_updated_time
+                    _LOGGER.debug(
+                        "Fetching device_details for MIX device %s", self.device_id
                     )
-
-                    mix_info = {**mix_details, **mix_energy}
-                    self.data = mix_info
-                    _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
+                    mix_details = self.api.device_details(
+                        self.device_id, DeviceType.SPH_MIX
+                    )
                 except growattServer.GrowattV1ApiError as err:
                     _LOGGER.error(
-                        "Error fetching mix device data for %s: %s", self.device_id, err
+                        "Error fetching device_details for MIX device %s: %s. Attempting fallback to device list.",
+                        self.device_id,
+                        err,
                     )
-                    raise UpdateFailed(f"Error fetching {self.device_type} device data: {err}") from err
+                    # Fallback: Try to get device info from device list
+                    try:
+                        device_list = self.api.device_list(self.plant_id)
+                        _LOGGER.debug("Device list response: %s", device_list)
+
+                        # Find the matching device
+                        matching_device = None
+                        if isinstance(device_list, dict):
+                            devices = device_list.get(
+                                "devices", device_list.get("data", [])
+                            )
+                        else:
+                            devices = (
+                                device_list if isinstance(device_list, list) else []
+                            )
+
+                        for device in devices:
+                            if str(device.get("device_sn")) == str(self.device_id):
+                                matching_device = device
+                                break
+
+                        if matching_device:
+                            _LOGGER.info(
+                                "Found device in device list, using basic data from there"
+                            )
+                            mix_details = {
+                                "device_sn": matching_device.get(
+                                    "device_sn", self.device_id
+                                ),
+                                "device_type": matching_device.get(
+                                    "device_type", "mix"
+                                ),
+                                "lost": matching_device.get("lost", False),
+                                "status": matching_device.get("status", 0),
+                            }
+                        else:
+                            _LOGGER.warning(
+                                "Could not find device %s in device list. Using minimal data.",
+                                self.device_id,
+                            )
+                            mix_details = {
+                                "device_sn": self.device_id,
+                                "device_type": "mix",
+                                "lost": False,
+                                "status": 0,
+                            }
+                    except Exception as fallback_err:
+                        _LOGGER.exception(
+                            "Fallback device list fetch also failed: %s", fallback_err
+                        )
+                        # Return minimal data structure to prevent integration failure
+                        mix_details = {
+                            "device_sn": self.device_id,
+                            "device_type": "mix",
+                            "lost": False,
+                            "status": 0,
+                        }
+
+                try:
+                    _LOGGER.debug(
+                        "Fetching device_energy for MIX device %s", self.device_id
+                    )
+                    mix_energy = self.api.device_energy(
+                        self.device_id, DeviceType.SPH_MIX
+                    )
+
+                    date_str = mix_energy.get("time")
+                    date_format = "%Y-%m-%d %H:%M:%S"
+                    tz = dt_util.get_default_time_zone()
+                    if date_str is not None:
+                        naive_dt = datetime.datetime.strptime(date_str, date_format)
+                        aware_dt = naive_dt.replace(tzinfo=tz)
+                        mix_details["lastdataupdate"] = aware_dt
+                    else:
+                        mix_details["lastdataupdate"] = None
+
+                    mix_energy["ppv1"] = mix_energy.get("ppv1", 0) / 1000  # W to kW
+                    mix_energy["ppv2"] = mix_energy.get("ppv2", 0) / 1000  # W to kW
+                    mix_energy["ppv"] = mix_energy.get("ppv", 0) / 1000  # W to kW
+                    mix_energy["accdischargePowerKW"] = (
+                        mix_energy.get("accdischargePower", 0) / 1000
+                    )  # W to kW
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.error(
+                        "Error fetching device_energy for device %s: %s. Using empty energy data.",
+                        self.device_id,
+                        err,
+                    )
+                    mix_energy = {}
+                    mix_details["lastdataupdate"] = None
+                except Exception as err:
+                    _LOGGER.exception(
+                        "Unexpected error fetching device_energy for device %s: %s",
+                        self.device_id,
+                        err,
+                    )
+                    mix_energy = {}
+                    mix_details["lastdataupdate"] = None
+
+                # Merge all the data
+                mix_info = {**mix_details, **mix_energy}
+                self.data = mix_info
+                _LOGGER.debug("mix_info for device %s: %r", self.device_id, mix_info)
             else:
                 mix_info = self.api.mix_info(self.device_id)
                 mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
-                mix_system_status = self.api.mix_system_status(
-                    self.device_id, self.plant_id
-                )
-                mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
 
-                # Get the chart data and work out the time of the last entry
-                mix_chart_entries = mix_detail["chartData"]
-                sorted_keys = sorted(mix_chart_entries)
+                # Fetch mix_system_status with error handling
+                try:
+                    _LOGGER.debug(
+                        "Fetching mix_system_status for device %s", self.device_id
+                    )
+                    mix_system_status = self.api.mix_system_status(
+                        self.device_id, self.plant_id
+                    )
+                except Exception as err:
+                    _LOGGER.error(
+                        "Error fetching mix_system_status for device %s: %s. Using empty data.",
+                        self.device_id,
+                        err,
+                    )
+                    mix_system_status = {}
 
-                # Create datetime from the latest entry
-                date_now = dt_util.now().date()
-                last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
-                mix_detail["lastdataupdate"] = datetime.datetime.combine(
-                    date_now,
-                    last_updated_time,  # type: ignore[arg-type]
-                    dt_util.get_default_time_zone(),
-                )
+                # Fetch mix_detail with error handling
+                try:
+                    _LOGGER.debug("Fetching mix_detail for device %s", self.device_id)
+                    mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
+
+                    # Get the chart data and work out the time of the last entry
+                    mix_chart_entries = mix_detail.get("chartData", {})
+                    if mix_chart_entries:
+                        sorted_keys = sorted(mix_chart_entries)
+
+                        # Create datetime from the latest entry
+                        date_now = dt_util.now().date()
+                        last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
+                        mix_detail["lastdataupdate"] = datetime.datetime.combine(
+                            date_now,
+                            last_updated_time,  # type: ignore[arg-type]
+                            dt_util.get_default_time_zone(),
+                        )
+                    else:
+                        mix_detail["lastdataupdate"] = None
+                except Exception as err:
+                    _LOGGER.error(
+                        "Error fetching mix_detail for device %s: %s. Using empty data.",
+                        self.device_id,
+                        err,
+                    )
+                    mix_detail = {"lastdataupdate": None}
 
                 # Dashboard data for mix system
-                dashboard_data = self.api.dashboard_data(self.plant_id)
-                dashboard_values_for_mix = {
-                    "etouser_combined": float(dashboard_data["etouser"].replace("kWh", ""))
-                }
+                try:
+                    dashboard_data = self.api.dashboard_data(self.plant_id)
+                    dashboard_values_for_mix = {
+                        "etouser_combined": float(
+                            dashboard_data["etouser"].replace("kWh", "")
+                        )
+                    }
+                except Exception as err:
+                    _LOGGER.error(
+                        "Error fetching dashboard_data for device %s: %s. Using empty data.",
+                        self.device_id,
+                        err,
+                    )
+                    dashboard_values_for_mix = {}
+
                 self.data = {
                     **mix_info,
                     **mix_totals,
@@ -243,7 +443,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_id,
                 self.device_type,
             )
-
 
         return self.data
 
@@ -350,10 +549,19 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update a value in coordinator data after successful write."""
         self.data[entity_description.api_key] = value
 
-    async def update_time_segment(
-        self, segment_id: int, batt_mode: int, start_time, end_time, enabled: bool
-    ) -> None:
-        """Update a time segment.
+    def _get_time_segment_params(
+        self,
+        segment_id: int,
+        batt_mode: int,
+        start_time: datetime.time,
+        end_time: datetime.time,
+        enabled: bool,
+        charge_power: int,
+        charge_stop_soc: int,
+        mains_enabled: bool,
+    ) -> tuple[DeviceType, Any, str]:
+        """
+        Determine device type and create appropriate params for time segment update.
 
         Args:
             segment_id: Time segment ID (1-9)
@@ -361,145 +569,378 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             start_time: Start time (datetime.time object)
             end_time: End time (datetime.time object)
             enabled: Whether the segment is enabled
-        """
+            charge_power: Charge power percentage (0-100, SPH_MIX only)
+            charge_stop_soc: Charge stop SOC percentage (0-100, SPH_MIX only)
+            mains_enabled: Enable mains charging (SPH_MIX only)
 
+        Returns:
+            Tuple of (device_type, params, command)
+
+        Raises:
+            HomeAssistantError: If device type is unsupported or battery mode is invalid
+        """
+        if self.device_type == "tlx":
+            # MIN_TLX device - use TimeSegmentParams
+            device_type = growattServer.DeviceType.MIN_TLX
+            params = self.api.TimeSegmentParams(
+                segment_id=segment_id,
+                batt_mode=batt_mode,
+                start_time=start_time,
+                end_time=end_time,
+                enabled=enabled,
+            )
+            command = f"time_segment_{segment_id}"
+            return device_type, params, command
+
+        elif self.device_type == "mix":
+            # SPH_MIX device - different commands based on battery mode
+            device_type = growattServer.DeviceType.SPH_MIX
+
+            if batt_mode == BATT_MODE_BATTERY_FIRST:
+                # Battery first mode - AC charge time period
+                params = self.api.MixAcChargeTimeParams(
+                    charge_power=charge_power,
+                    charge_stop_soc=charge_stop_soc,
+                    mains_enabled=mains_enabled,
+                    start_hour=start_time.hour,
+                    start_minute=start_time.minute,
+                    end_hour=end_time.hour,
+                    end_minute=end_time.minute,
+                    enabled=enabled,
+                    segment_id=segment_id,
+                )
+                command = "mix_ac_charge_time_period"
+                return device_type, params, command
+
+            elif batt_mode == BATT_MODE_GRID_FIRST:
+                # Grid first mode - AC discharge time period
+                params = self.api.MixAcDischargeTimeParams(
+                    discharge_power=charge_power,  # discharge power
+                    discharge_stop_soc=charge_stop_soc,  # Stop at % SOC
+                    start_hour=start_time.hour,
+                    start_minute=start_time.minute,
+                    end_hour=end_time.hour,
+                    end_minute=end_time.minute,
+                    enabled=enabled,
+                    segment_id=segment_id,
+                )
+                command = "mix_ac_discharge_time_period"
+                return device_type, params, command
+
+            elif batt_mode == BATT_MODE_LOAD_FIRST:
+                # Load first mode - single export
+                params = self.api.ChargeDischargeParams(
+                    discharge_stop_soc=charge_stop_soc,
+                )
+                command = "mix_single_export"
+                return device_type, params, command
+
+            else:
+                msg = f"Invalid battery mode {batt_mode} for MIX device"
+                _LOGGER.error(msg)
+                raise HomeAssistantError(msg)
+
+        else:
+            msg = f"Time segment updates not supported for device type: {self.device_type}"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
+    async def update_time_segment(
+        self,
+        segment_id: int,
+        batt_mode: int,
+        start_time: datetime.time,
+        end_time: datetime.time,
+        enabled: bool,
+        charge_power: int = 80,
+        charge_stop_soc: int = 95,
+        mains_enabled: bool = True,
+    ) -> None:
+        """
+        Update a time segment.
+
+        Args:
+            segment_id: Time segment ID (1-9)
+            batt_mode: Battery mode (0=load first, 1=battery first, 2=grid first)
+            start_time: Start time (datetime.time object)
+            end_time: End time (datetime.time object)
+            enabled: Whether the segment is enabled
+            charge_power: Charge power percentage (0-100, SPH_MIX only)
+            charge_stop_soc: Charge stop SOC percentage (0-100, SPH_MIX only)
+            mains_enabled: Enable mains charging (SPH_MIX only)
+
+        """
         _LOGGER.debug(
-            "Updating MIN/TLX time segment %s for device %s",
+            "Updating time segment %s for device %s (%s)",
             segment_id,
             self.device_id,
+            self.device_type,
         )
 
-        if self.api_version == "v1":
-            # Use V1 API for token authentication
-            response = await self.hass.async_add_executor_job(
-                self.api.min_write_time_segment,
+        if self.api_version != "v1":
+            msg = "Time segment updates require V1 API (token authentication)"
+            _LOGGER.warning(msg)
+            raise HomeAssistantError(msg)
+
+        # Get device type, params, and command for this update
+        device_type, params, command = self._get_time_segment_params(
+            segment_id=segment_id,
+            batt_mode=batt_mode,
+            start_time=start_time,
+            end_time=end_time,
+            enabled=enabled,
+            charge_power=charge_power,
+            charge_stop_soc=charge_stop_soc,
+            mains_enabled=mains_enabled,
+        )
+
+        _LOGGER.debug(
+            "Running Command %s with params %s",
+            command,
+            params,
+        )
+
+        try:
+            # Use V1 API write_time_segment method
+            response = self.hass.async_add_executor_job(
+                self.api.write_time_segment,
                 self.device_id,
-                segment_id,
-                batt_mode,
-                start_time,
-                end_time,
-                enabled,
+                device_type,
+                command,
+                params,
             )
 
-            if hasattr(response, 'get'):
-                if response.get("error_code", 1) == 0:
+            _LOGGER.debug(
+                "Write time segment response: type=%s, response=%s",
+                type(response).__name__,
+                response,
+            )
+
+            # Handle dict response (most common)
+            if isinstance(response, dict):
+                error_code = response.get("error_code", 1)
+                error_msg = response.get("error_msg", "Unknown error")
+
+                if error_code == 0:
                     _LOGGER.info(
-                        "Successfully updated MIN/TLX time segment %s for device %s",
+                        "Successfully updated time segment %s for device %s: %s (Full response: %s)",
                         segment_id,
                         self.device_id,
+                        error_msg,
+                        response,
                     )
                     # Trigger a refresh to update the data
                     await self.async_refresh()
                 else:
-                    error_msg = response.get("error_msg", "Unknown error")
                     _LOGGER.error(
-                        "Failed to update MIN/TLX time segment %s for device %s: %s",
+                        "Failed to update time segment %s for device %s: error_code=%s, %s",
                         segment_id,
                         self.device_id,
+                        error_code,
                         error_msg,
                     )
-                    raise HomeAssistantError(f"Failed to update time segment: {error_msg}")
-        else:
-            _LOGGER.warning(
-                "Time segment updates are only supported with V1 API (token authentication)"
+                    msg = f"Failed to update time segment: {error_msg} (code: {error_code})"
+                    raise HomeAssistantError(msg)
+            else:
+                _LOGGER.warning(
+                    "Unexpected response format for time segment update: %s - %s",
+                    type(response).__name__,
+                    response,
+                )
+        except HomeAssistantError:
+            # Re-raise HomeAssistantError as-is
+            raise
+        except Exception as err:
+            _LOGGER.exception(
+                "Error updating time segment %s for device %s",
+                segment_id,
+                self.device_id,
             )
-            raise HomeAssistantError(
-                "Time segment updates require token authentication"
-            )
+            msg = f"Error updating time segment: {err}"
+            raise HomeAssistantError(msg) from err
 
-    async def read_time_segments(self) -> list[dict]:
-        """Read time segments from an inverter.
+    async def read_time_segments(self) -> list[dict[str, Any]]:
+        """
+        Read time segments from the device.
+
+        For MIN/TLX devices: Uses the API's read_time_segments method.
+        For SPH/MIX devices: Parses the forced charge/discharge fields.
 
         Returns:
-            List of dictionaries containing segment information
+            List of time segment dictionaries with keys:
+            - segment_id: int
+            - batt_mode: int (0=load first, 1=battery first/charge, 2=grid first/discharge)
+            - mode_name: str
+            - start_time: str (HH:MM format)
+            - end_time: str (HH:MM format)
+            - enabled: bool
+
         """
+        if self.api_version != "v1":
+            msg = "Time segment reading requires V1 API"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
+        if self.device_type == "tlx":
+            return await self._read_tlx_time_segments()
+        elif self.device_type == "mix":
+            return await self._read_mix_time_segments()
+        else:
+            msg = f"Time segment reading not supported for device type: {self.device_type}"
+            _LOGGER.error(msg)
+            raise HomeAssistantError(msg)
+
+    async def _read_tlx_time_segments(self) -> list[dict[str, Any]]:
+        """Read time segments for MIN/TLX devices using the API."""
         _LOGGER.debug(
-            "Reading MIN/TLX time segments for device %s",
+            "Reading TLX time segments for device %s",
             self.device_id,
         )
 
-        if self.api_version != "v1":
-            _LOGGER.warning(
-                "Reading time segments is only supported with V1 API (token authentication)"
-            )
-            raise HomeAssistantError(
-                "Reading time segments requires token authentication"
+        try:
+            response = await self.hass.async_add_executor_job(
+                self.api.read_time_segments,
+                self.device_id,
+                growattServer.DeviceType.MIN_TLX,
             )
 
-        # Ensure we have current data
-        if not self.data:
-            _LOGGER.debug("Triggering refresh to get time segments")
-            await self.async_refresh()
+            _LOGGER.debug(
+                "TLX read_time_segments response type: %s, content: %s",
+                type(response).__name__,
+                response,
+            )
 
-        time_segments = []
-        mode_names = {0: "Load First", 1: "Battery First", 2: "Grid First"}
+            # Handle different response formats
+            if isinstance(response, list):
+                time_segments = response
+            elif isinstance(response, dict):
+                error_code = response.get("error_code", 1)
+                if error_code == 0:
+                    time_segments = response.get("data", [])
+                else:
+                    error_msg = response.get("error_msg", "Unknown error")
+                    msg = f"API error reading time segments: {error_msg} (code: {error_code})"
+                    raise HomeAssistantError(msg)
+            else:
+                _LOGGER.warning(
+                    "Unexpected response format: %s", type(response).__name__
+                )
+                time_segments = []
+
+            _LOGGER.info(
+                "Successfully read %d time segments for TLX device %s",
+                len(time_segments),
+                self.device_id,
+            )
+
+            return time_segments
+
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            _LOGGER.exception("Error reading TLX time segments: %s", err)
+            msg = f"Error reading TLX time segments: {err}"
+            raise HomeAssistantError(msg) from err
+
+    async def _read_mix_time_segments(self) -> list[dict[str, Any]]:
+        """
+        Read time segments for SPH/MIX devices by parsing device settings.
+
+        SPH/MIX devices store charge/discharge periods in numbered fields:
+        - forcedChargeStopSwitch1-6: Enable flags for charge periods
+        - forcedChargeTimeStart1-6: Start times for charge periods
+        - forcedChargeTimeStop1-6: End times for charge periods
+        - forcedDischargeStopSwitch1-6: Enable flags for discharge periods
+        - forcedDischargeTimeStart1-6: Start times for discharge periods
+        - forcedDischargeTimeStop1-6: End times for discharge periods
+
+        """
+        _LOGGER.debug(
+            "Reading MIX time segments for device %s",
+            self.device_id,
+        )
 
         try:
-            # Extract time segments from coordinator data
-            for i in range(1, 10):  # Segments 1-9
-                # Get raw time values
-                start_time_raw = self.data.get(f"forcedTimeStart{i}", "0:0")
-                end_time_raw = self.data.get(f"forcedTimeStop{i}", "0:0")
+            # Get current device data which includes all settings
+            if not self.data:
+                await self.async_refresh()
 
-                # Handle 'null' or empty values
-                if start_time_raw in ("null", None, ""):
-                    start_time_raw = "0:0"
-                if end_time_raw in ("null", None, ""):
-                    end_time_raw = "0:0"
+            time_segments = []
 
-                # Format times with leading zeros (HH:MM)
-                try:
-                    start_parts = str(start_time_raw).split(":")
-                    start_hour = int(start_parts[0])
-                    start_min = int(start_parts[1])
-                    start_time = f"{start_hour:02d}:{start_min:02d}"
-                except (ValueError, IndexError):
-                    start_time = "00:00"
+            # Parse charge periods (Battery First mode - batt_mode=1)
+            for i in range(1, 7):  # 6 charge periods
+                enabled = bool(self.data.get(f"forcedChargeStopSwitch{i}", 0))
+                start_time = self.data.get(f"forcedChargeTimeStart{i}", "0:0")
+                end_time = self.data.get(f"forcedChargeTimeStop{i}", "0:0")
 
-                try:
-                    end_parts = str(end_time_raw).split(":")
-                    end_hour = int(end_parts[0])
-                    end_min = int(end_parts[1])
-                    end_time = f"{end_hour:02d}:{end_min:02d}"
-                except (ValueError, IndexError):
-                    end_time = "00:00"
+                # Normalize time format from "H:M" to "HH:MM"
+                start_time = self._normalize_time_format(start_time)
+                end_time = self._normalize_time_format(end_time)
 
-                # Get the mode value
-                mode_raw = self.data.get(f"time{i}Mode")
-                if mode_raw in ("null", None):
-                    batt_mode = None
-                else:
-                    try:
-                        batt_mode = int(mode_raw)
-                    except (ValueError, TypeError):
-                        batt_mode = None
+                time_segments.append(
+                    {
+                        "segment_id": i,
+                        "batt_mode": BATT_MODE_BATTERY_FIRST,
+                        "mode_name": "Battery First (Charge)",
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "enabled": enabled,
+                    }
+                )
 
-                # Get the enabled status
-                enabled_raw = self.data.get(f"forcedStopSwitch{i}", 0)
-                if enabled_raw in ("null", None):
-                    enabled = False
-                else:
-                    try:
-                        enabled = int(enabled_raw) == 1
-                    except (ValueError, TypeError):
-                        enabled = False
+            # Parse discharge periods (Grid First mode - batt_mode=2)
+            for i in range(1, 7):  # 6 discharge periods
+                enabled = bool(self.data.get(f"forcedDischargeStopSwitch{i}", 0))
+                start_time = self.data.get(f"forcedDischargeTimeStart{i}", "0:0")
+                end_time = self.data.get(f"forcedDischargeTimeStop{i}", "0:0")
 
-                segment = {
-                    "segment_id": i,
-                    "batt_mode": batt_mode,
-                    "mode_name": mode_names.get(batt_mode, "Unknown"),
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "enabled": enabled,
-                }
+                # Normalize time format
+                start_time = self._normalize_time_format(start_time)
+                end_time = self._normalize_time_format(end_time)
 
-                time_segments.append(segment)
-                _LOGGER.debug("MIN/TLX time segment %s: %s", i, segment)
+                time_segments.append(
+                    {
+                        "segment_id": i + 6,  # Offset by 6 to avoid conflicts
+                        "batt_mode": BATT_MODE_GRID_FIRST,
+                        "mode_name": "Grid First (Discharge)",
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "enabled": enabled,
+                    }
+                )
+
+            _LOGGER.info(
+                "Successfully read %d time segments for MIX device %s",
+                len(time_segments),
+                self.device_id,
+            )
+
+            return time_segments
 
         except Exception as err:
-            _LOGGER.error("Error reading MIN/TLX time segments: %s", err)
-            raise HomeAssistantError(
-                f"Error reading MIN/TLX time segments: {err}"
-            ) from err
+            _LOGGER.exception("Error reading MIX time segments: %s", err)
+            msg = f"Error reading MIX time segments: {err}"
+            raise HomeAssistantError(msg) from err
 
-        return time_segments
+    @staticmethod
+    def _normalize_time_format(time_str: str) -> str:
+        """
+        Normalize time string from "H:M" format to "HH:MM" format.
+
+        Examples:
+            "14:0" -> "14:00"
+            "0:0" -> "00:00"
+            "9:30" -> "09:30"
+
+        """
+        try:
+            parts = time_str.split(":")
+            if len(parts) != 2:
+                return "00:00"
+
+            hours = int(parts[0])
+            minutes = int(parts[1])
+
+            return f"{hours:02d}:{minutes:02d}"
+        except (ValueError, AttributeError):
+            return "00:00"
