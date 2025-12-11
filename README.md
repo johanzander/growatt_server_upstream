@@ -9,59 +9,39 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core. From version 1.5.0 it should be compatible with the [Growatt BESS (Battery Energy Storage System) Manager][bess]
 
-## Features (v1.5.0)
+## Features
 
+**Current Version**: v1.6.0
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 
-**Changes from Base Version**:
+**All Changes from Base Version**:
 
 1. `manifest.json` updated for custom component distribution
 2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX devices
 3. [MIN inverter control][pr-153468] - Number and switch entities for controlling inverter settings
-4. Adds 5 min rate limit to login to prevent account locking - aims to fix [account locking issue][issue-150732]
-5. **Fixed sensor naming issue** - Sensors now display proper translated names instead of generic device class names
-6. **Fixed timezone handling in API throttling** - Fixed bug that could cause very long throttling times (500 minutes)
-7. **Enhanced TLX sensor coverage** - Added 14 new sensors for power and energy
-monitoring
-8. Proper implementation of read / write Time Of Use (TOU) settings using service calls:
-  `growattserver.read_time_segments,
-  growattserver.update_time_segment`
+4. **Rate limiting** - 5-minute throttle on API login to prevent account locking (fixes [issue #150732][issue-150732])
+5. **Fixed sensor naming** - Sensors now display proper translated names instead of generic device class names
+6. **Fixed timezone handling** - Corrected API throttling timezone bug that could cause excessive wait times
+7. **Enhanced TLX sensor coverage** - 14 new sensors for power and energy monitoring
+8. **Time of Use (TOU) control** - Service calls for reading/updating TOU settings: `growattserver.read_time_segments`, `growattserver.update_time_segment`
+9. **Energy Dashboard support** - Added state_class to all power and energy sensors for full Energy dashboard integration
 
-### MIN/TLX Inverter Control Features (V1 API)
+## What's New in v1.6.0
 
-When using token authentication with MIN/TLX inverters, you get:
+- **Energy Dashboard Integration**: Added `state_class` attributes to 34 power and energy sensors (9 power + 10 energy in MIX, 15 power in TLX), enabling proper integration with Home Assistant's Energy dashboard for tracking solar generation, consumption, and grid import/export
+
+### MIN/TLX Inverter Control (V1 API)
+
+When using token authentication with MIN/TLX inverters:
 
 **Number Entities** (0-100%):
-
-- Charge power
-- Charge stop SOC
-- Discharge power
-- Discharge stop SOC
+- Charge power / Charge stop SOC
+- Discharge power / Discharge stop SOC
 
 **Switch Entities**:
-
 - AC charge enable/disable
 
 All control entities provide real-time feedback and proper error handling.
-
-### Enhanced TLX Sensor Coverage (v1.4.6)
-
-Added 14 new sensors for power and energy monitoring:
-
-**Power Flow Monitoring**:
-
-- Solar generation today
-- Local load power, import power, export power
-- System power, self power
-
-**Energy Accounting**:
-
-- System production (today/total)
-- Self-consumption (today/total)
-- Grid import/export (today/total)
-- Battery charging from grid (today/total)
-
-These sensors provide complete visibility into energy flows and system performance for TLX/MIN inverters.
 
 ## Installation
 
