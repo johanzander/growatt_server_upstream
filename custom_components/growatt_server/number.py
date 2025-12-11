@@ -88,12 +88,12 @@ async def async_setup_entry(
     """Set up Growatt number entities."""
     runtime_data = entry.runtime_data
 
-    # Add number entities for each MIN device (only supported with V1 API)
+    # Add number entities for each MIN/MIX device (only supported with V1 API)
     async_add_entities(
         GrowattNumber(device_coordinator, description)
         for device_coordinator in runtime_data.devices.values()
         if (
-            device_coordinator.device_type == "min"
+            device_coordinator.device_type in ["min", "mix"]
             and device_coordinator.api_version == "v1"
         )
         for description in MIN_NUMBER_TYPES
@@ -141,7 +141,7 @@ class GrowattNumber(CoordinatorEntity[GrowattCoordinator], NumberEntity):
         try:
             # Use V1 API to write parameter
             await self.hass.async_add_executor_job(
-                self.coordinator.api.min_write_parameter,
+                self.coordinator.api.write_parameter,
                 self.coordinator.device_id,
                 parameter_id,
                 int_value,

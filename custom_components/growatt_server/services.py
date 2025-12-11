@@ -24,20 +24,20 @@ if TYPE_CHECKING:
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register services for Growatt Server integration."""
 
-    def get_min_coordinators() -> dict[str, GrowattCoordinator]:
-        """Get all MIN coordinators with V1 API from loaded config entries."""
-        min_coordinators: dict[str, GrowattCoordinator] = {}
+    def get_coordinators() -> dict[str, GrowattCoordinator]:
+        """Get all coordinators that support services (V1 API devices)."""
+        device_coordinators: dict[str, GrowattCoordinator] = {}
 
         for entry in hass.config_entries.async_entries(DOMAIN):
             if entry.state != ConfigEntryState.LOADED:
                 continue
 
-            # Add MIN coordinators from this entry
+            # Add V1 API coordinators that support services
             for coord in entry.runtime_data.devices.values():
-                if coord.device_type == "min" and coord.api_version == "v1":
-                    min_coordinators[coord.device_id] = coord
+                if coord.device_type in ["min", "mix"] and coord.api_version == "v1":
+                    device_coordinators[coord.device_id] = coord
 
-        return min_coordinators
+        return device_coordinators
 
     def get_coordinator(device_id: str) -> GrowattCoordinator:
         """Get coordinator by device_id.
@@ -46,12 +46,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
             device_id: Device registry ID (not serial number)
         """
         # Get current coordinators (they may have changed since service registration)
-        min_coordinators = get_min_coordinators()
+        device_coordinators = get_coordinators()
 
-        if not min_coordinators:
+        if not device_coordinators:
             raise ServiceValidationError(
-                "No MIN devices with token authentication are configured. "
-                "Services require MIN devices with V1 API access."
+                "No devices with service capability are configured. "
+                "Services require V1 API access (token authentication)."
             )
 
         # Device registry ID provided - map to serial number
@@ -74,12 +74,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
 
         # Find coordinator by serial number
-        if serial_number not in min_coordinators:
+        if serial_number not in device_coordinators:
             raise ServiceValidationError(
-                f"MIN device '{serial_number}' not found or not configured for services"
+                f"Device '{serial_number}' not found or does not support services"
             )
 
-        return min_coordinators[serial_number]
+        return device_coordinators[serial_number]
 
     async def handle_update_time_segment(call: ServiceCall) -> None:
         """Handle update_time_segment service call."""

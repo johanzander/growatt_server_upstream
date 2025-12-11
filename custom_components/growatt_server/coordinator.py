@@ -113,21 +113,71 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.data = total_info
         elif self.device_type == "inverter":
             self.data = self.api.inverter_detail(self.device_id)
-        elif self.device_type == "min":
-            # Open API V1: min device
-            try:
-                min_details = self.api.min_detail(self.device_id)
-                min_settings = self.api.min_settings(self.device_id)
-                min_energy = self.api.min_energy(self.device_id)
-            except growattServer.GrowattV1ApiError as err:
-                _LOGGER.error(
-                    "Error fetching min device data for %s: %s", self.device_id, err
-                )
-                raise UpdateFailed(f"Error fetching min device data: {err}") from err
+        elif self.device_type in ["min", "mix"]:
+            if self.api_version == "v1":
+                # Open API V1: Generic device detail, settings, and energy (harmonized for MIN/MIX)
+                try:
+                    device_details = self.api.detail(self.device_id)
+                    device_settings = self.api.settings(self.device_id)  
+                    device_energy = self.api.energy(self.device_id)
+                except growattServer.GrowattV1ApiError as err:
+                    _LOGGER.error(
+                        "Error fetching device data for %s: %s", self.device_id, err
+                    )
+                    raise UpdateFailed(f"Error fetching device data: {err}") from err
 
-            min_info = {**min_details, **min_settings, **min_energy}
-            self.data = min_info
-            _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
+                device_info = {**device_details, **device_settings, **device_energy}
+                self.data = device_info
+                _LOGGER.debug("device_info for device %s: %r", self.device_id, device_info)
+            else:
+                # Classic API: Use device-specific methods
+                if self.device_type == "min":
+                    try:
+                        min_details = self.api.min_detail(self.device_id)
+                        min_settings = self.api.min_settings(self.device_id)
+                        min_energy = self.api.min_energy(self.device_id)
+                    except Exception as err:
+                        _LOGGER.error(
+                            "Error fetching min device data for %s: %s", self.device_id, err
+                        )
+                        raise UpdateFailed(f"Error fetching min device data: {err}") from err
+
+                    min_info = {**min_details, **min_settings, **min_energy}
+                    self.data = min_info
+                    _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
+                elif self.device_type == "mix":
+                    mix_info = self.api.mix_info(self.device_id)
+                    mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
+                    mix_system_status = self.api.mix_system_status(
+                        self.device_id, self.plant_id
+                    )
+                    mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
+
+                    # Get the chart data and work out the time of the last entry
+                    mix_chart_entries = mix_detail["chartData"]
+                    sorted_keys = sorted(mix_chart_entries)
+
+                    # Create datetime from the latest entry
+                    date_now = dt_util.now().date()
+                    last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
+                    mix_detail["lastdataupdate"] = datetime.datetime.combine(
+                        date_now,
+                        last_updated_time,  # type: ignore[arg-type]
+                        dt_util.get_default_time_zone(),
+                    )
+
+                    # Dashboard data for mix system
+                    dashboard_data = self.api.dashboard_data(self.plant_id)
+                    dashboard_values_for_mix = {
+                        "etouser_combined": float(dashboard_data["etouser"].replace("kWh", ""))
+                    }
+                    self.data = {
+                        **mix_info,
+                        **mix_totals,
+                        **mix_system_status,
+                        **mix_detail,
+                        **dashboard_values_for_mix,
+                    }
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
             self.data = tlx_info["data"]
@@ -140,39 +190,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.data = {
                 **storage_info_detail["storageDetailBean"],
                 **storage_energy_overview,
-            }
-        elif self.device_type == "mix":
-            mix_info = self.api.mix_info(self.device_id)
-            mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
-            mix_system_status = self.api.mix_system_status(
-                self.device_id, self.plant_id
-            )
-            mix_detail = self.api.mix_detail(self.device_id, self.plant_id)
-
-            # Get the chart data and work out the time of the last entry
-            mix_chart_entries = mix_detail["chartData"]
-            sorted_keys = sorted(mix_chart_entries)
-
-            # Create datetime from the latest entry
-            date_now = dt_util.now().date()
-            last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
-            mix_detail["lastdataupdate"] = datetime.datetime.combine(
-                date_now,
-                last_updated_time,  # type: ignore[arg-type]
-                dt_util.get_default_time_zone(),
-            )
-
-            # Dashboard data for mix system
-            dashboard_data = self.api.dashboard_data(self.plant_id)
-            dashboard_values_for_mix = {
-                "etouser_combined": float(dashboard_data["etouser"].replace("kWh", ""))
-            }
-            self.data = {
-                **mix_info,
-                **mix_totals,
-                **mix_system_status,
-                **mix_detail,
-                **dashboard_values_for_mix,
             }
         _LOGGER.debug(
             "Finished updating data for %s (%s)",
@@ -259,6 +276,32 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return return_value
 
+    def _get_tou_field_names(self, segment_id: int) -> dict[str, str]:
+        """Get the correct TOU field names based on device type.
+        
+        Args:
+            segment_id: Time segment ID (1-9)
+            
+        Returns:
+            Dictionary with field names for start_time, end_time, mode, and enabled
+        """
+        if self.device_type == "mix":
+            # SPH_MIX devices use different field names
+            return {
+                "start_time": f"forcedChargeTimeStart{segment_id}",
+                "end_time": f"forcedChargeTimeStop{segment_id}",
+                "mode": None,  # MIX devices don't have a mode field
+                "enabled": f"forcedChargeStopSwitch{segment_id}",
+            }
+        else:
+            # MIN_TLX devices use the field names from master branch
+            return {
+                "start_time": f"forcedTimeStart{segment_id}",
+                "end_time": f"forcedTimeStop{segment_id}",
+                "mode": f"time{segment_id}Mode",  # Correct field name from master
+                "enabled": f"forcedStopSwitch{segment_id}",  # Correct field name from master
+            }
+
     async def update_time_segment(
         self, segment_id: int, batt_mode: int, start_time, end_time, enabled: bool
     ) -> None:
@@ -290,7 +333,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Use V1 API for token authentication
             # The library's _process_response will raise GrowattV1ApiError if error_code != 0
             await self.hass.async_add_executor_job(
-                self.api.min_write_time_segment,
+                self.api.write_time_segment,
                 self.device_id,
                 segment_id,
                 batt_mode,
@@ -303,11 +346,18 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Update coordinator's cached data without making an API call (avoids rate limit)
         if self.data:
-            # Update the time segment data in the cache
-            self.data[f"forcedTimeStart{segment_id}"] = start_time.strftime("%H:%M")
-            self.data[f"forcedTimeStop{segment_id}"] = end_time.strftime("%H:%M")
-            self.data[f"forcedChargeBatMode{segment_id}"] = batt_mode
-            self.data[f"forcedChargeFlag{segment_id}"] = 1 if enabled else 0
+            # Get the correct field names for this device type
+            field_names = self._get_tou_field_names(segment_id)
+            
+            # Update the time segment data in the cache using device-specific field names
+            self.data[field_names["start_time"]] = start_time.strftime("%H:%M")
+            self.data[field_names["end_time"]] = end_time.strftime("%H:%M")
+            
+            # Only update mode field if device type supports it
+            if field_names["mode"] is not None:
+                self.data[field_names["mode"]] = batt_mode
+                
+            self.data[field_names["enabled"]] = 1 if enabled else 0
 
             # Notify entities of the updated data (no API call)
             self.async_set_updated_data(self.data)
@@ -341,9 +391,12 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _parse_time_segment(self, segment_id: int) -> dict:
         """Parse a single time segment from coordinator data."""
+        # Get the correct field names for this device type
+        field_names = self._get_tou_field_names(segment_id)
+        
         # Get raw time values - these should always be present from the API
-        start_time_raw = self.data.get(f"forcedTimeStart{segment_id}")
-        end_time_raw = self.data.get(f"forcedTimeStop{segment_id}")
+        start_time_raw = self.data.get(field_names["start_time"])
+        end_time_raw = self.data.get(field_names["end_time"])
 
         # Handle 'null' or empty values from API
         if start_time_raw in ("null", None, ""):
@@ -355,10 +408,14 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         start_time = self._format_time(str(start_time_raw))
         end_time = self._format_time(str(end_time_raw))
 
-        # Get battery mode
-        batt_mode_int = int(
-            self.data.get(f"forcedChargeBatMode{segment_id}", BATT_MODE_LOAD_FIRST)
-        )
+        # Get battery mode (only for devices that support it)
+        if field_names["mode"] is not None:
+            batt_mode_int = int(
+                self.data.get(field_names["mode"], BATT_MODE_LOAD_FIRST)
+            )
+        else:
+            # MIX devices don't have mode field, default to load first
+            batt_mode_int = BATT_MODE_LOAD_FIRST
 
         # Map numeric mode to string key (matches update_time_segment input format)
         mode_map = {
@@ -369,7 +426,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         batt_mode = mode_map.get(batt_mode_int, "load_first")
 
         # Get enabled status
-        enabled = bool(int(self.data.get(f"forcedChargeFlag{segment_id}", 0)))
+        enabled = bool(int(self.data.get(field_names["enabled"], 0)))
 
         return {
             "segment_id": segment_id,

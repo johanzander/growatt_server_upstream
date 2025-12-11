@@ -17,7 +17,7 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 1. **GraemeDBlue Library Integration** - Uses enhanced PyPi_GrowattServer library with improved API handling
 2. **Advanced Rate Limiting** - 5-minute API throttling with automatic retry and user notifications
-3. **Time-of-Use (TOU) Services** - Complete service implementation for MIN device battery management:
+3. **Time-of-Use (TOU) Services** - Complete service implementation for MIN/MIX device battery management:
    - `growatt_server.read_time_segments` - Read current TOU settings
    - `growatt_server.update_time_segment` - Update individual time segments
 4. **Enhanced Error Handling** - Persistent notifications during API throttling periods
