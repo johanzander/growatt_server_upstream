@@ -222,7 +222,8 @@ TLX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         precision=1,
-    ),    GrowattSensorEntityDescription(
+    ),
+    GrowattSensorEntityDescription(
         key="tlx_solar_generation_total",
         translation_key="tlx_solar_generation_total",
         api_key="epvTotal",
@@ -442,6 +443,13 @@ TLX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         never_resets=True,
     ),
     GrowattSensorEntityDescription(
+        key="tlx_statement_of_charge",
+        translation_key="tlx_statement_of_charge",
+        api_key="bmsSoc",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+    ),
+    GrowattSensorEntityDescription(
         key="tlx_pac_to_local_load",
         translation_key="tlx_pac_to_local_load",
         api_key="pacToLocalLoad",
@@ -467,7 +475,7 @@ TLX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         precision=1,
-    ),    
+    ),
     GrowattSensorEntityDescription(
         key="tlx_system_production_today",
         translation_key="tlx_system_production_today",
@@ -561,12 +569,5 @@ TLX_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         precision=1,
-    ),
-    GrowattSensorEntityDescription(
-        key="tlx_statement_of_charge",
-        translation_key="tlx_statement_of_charge",
-        api_key="bmsSoc",
-        native_unit_of_measurement=PERCENTAGE,
-        device_class=SensorDeviceClass.BATTERY,
     ),
 )

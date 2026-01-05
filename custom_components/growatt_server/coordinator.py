@@ -1,5 +1,7 @@
 """Coordinator module for managing Growatt data fetching."""
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging
@@ -8,13 +10,17 @@ from typing import TYPE_CHECKING, Any
 import growattServer
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_URL, DOMAIN
+from .const import (
+    BATT_MODE_BATTERY_FIRST,
+    BATT_MODE_GRID_FIRST,
+    BATT_MODE_LOAD_FIRST,
+    DOMAIN,
+)
 from .models import GrowattRuntimeData
 
 if TYPE_CHECKING:
@@ -47,22 +53,8 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.plant_id = plant_id
         self.previous_values: dict[str, Any] = {}
 
-        if self.api_version == "v1":
-            self.username = None
-            self.password = None
-            self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
-            self.token = config_entry.data["token"]
-            self.api = growattServer.OpenApiV1(token=self.token)
-        elif self.api_version == "classic":
-            self.username = config_entry.data.get(CONF_USERNAME)
-            self.password = config_entry.data[CONF_PASSWORD]
-            self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
-            self.api = growattServer.GrowattApi(
-                add_random_user_id=True, agent_identifier=self.username
-            )
-            self.api.server_url = self.url
-        else:
-            raise ValueError(f"Unknown API version: {self.api_version}")
+        # Use the shared API instance from runtime_data (already logged in for Classic API)
+        self.api = config_entry.runtime_data.api
 
         super().__init__(
             hass,
@@ -72,43 +64,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry=config_entry,
         )
 
-    def _calculate_epv_today(self, data: dict) -> dict:
-        """Calculate total solar generation today from individual PV inputs.
-
-        Args:
-            data: Device data dictionary
-
-        Returns:
-            Updated data dictionary with epvToday calculated if needed
-        """
-        if "epvToday" not in data and any(
-            key in data for key in ("epv1Today", "epv2Today", "epv3Today", "epv4Today")
-        ):
-            total_pv_today = 0.0
-            for i in range(1, 5):
-                pv_key = f"epv{i}Today"
-                if pv_key in data and data[pv_key] not in (None, ""):
-                    try:
-                        total_pv_today += float(data[pv_key])
-                    except (ValueError, TypeError):
-                        _LOGGER.debug("Could not convert %s to float: %s", pv_key, data[pv_key])
-
-            data["epvToday"] = total_pv_today
-            _LOGGER.debug(
-                "Calculated epvToday = %s from sum of individual PV inputs for device %s",
-                total_pv_today,
-                self.device_id,
-            )
-
-        return data
-
     def _sync_update_data(self) -> dict[str, Any]:
         """Update data via library synchronously."""
         _LOGGER.debug("Updating data for %s (%s)", self.device_id, self.device_type)
 
-        # login only required for classic API
-        if self.api_version == "classic":
-            self.api.login(self.username, self.password)
+        # No login needed - session persists from __init__ login
 
         if self.device_type == "total":
             if self.api_version == "v1":
@@ -141,25 +101,15 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 min_details = self.api.min_detail(self.device_id)
                 min_settings = self.api.min_settings(self.device_id)
                 min_energy = self.api.min_energy(self.device_id)
-                min_info = {**min_details, **min_settings, **min_energy}
-
-                # Calculate epvToday if not present
-                min_info = self._calculate_epv_today(min_info)
-
-                self.data = min_info
-                _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
             except growattServer.GrowattV1ApiError as err:
-                _LOGGER.error(
-                    "Error fetching min device data for %s: %s", self.device_id, err
-                )
                 raise UpdateFailed(f"Error fetching min device data: {err}") from err
+
+            min_info = {**min_details, **min_settings, **min_energy}
+            self.data = min_info
+            _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
             self.data = tlx_info["data"]
-
-            # Calculate epvToday if not present
-            self.data = self._calculate_epv_today(self.data)
-
             _LOGGER.debug("tlx_info for device %s: %r", self.device_id, tlx_info)
         elif self.device_type == "storage":
             storage_info_detail = self.api.storage_params(self.device_id)
@@ -216,7 +166,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             return await self.hass.async_add_executor_job(self._sync_update_data)
         except json.decoder.JSONDecodeError as err:
-            _LOGGER.error("Unable to fetch data from Growatt server: %s", err)
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
     def get_currency(self):
@@ -224,7 +173,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.data.get("currency")
 
     def get_data(
-        self, entity_description: "GrowattSensorEntityDescription"
+        self, entity_description: GrowattSensorEntityDescription
     ) -> str | int | float | None:
         """Get the data."""
         variable = entity_description.api_key
@@ -288,18 +237,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return return_value
 
-    def get_value(self, entity_description) -> str | int | None:
-        """Get a value from coordinator data for number/switch entities."""
-        return self.data.get(entity_description.api_key)
-
-    def set_value(self, entity_description, value: str | int) -> None:
-        """Update a value in coordinator data after successful write."""
-        self.data[entity_description.api_key] = value
-
     async def update_time_segment(
         self, segment_id: int, batt_mode: int, start_time, end_time, enabled: bool
     ) -> None:
-        """Update a time segment.
+        """Update an inverter time segment.
 
         Args:
             segment_id: Time segment ID (1-9)
@@ -308,16 +249,25 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             end_time: End time (datetime.time object)
             enabled: Whether the segment is enabled
         """
-
         _LOGGER.debug(
-            "Updating MIN/TLX time segment %s for device %s",
+            "Updating time segment %d for device %s (mode=%d, %s-%s, enabled=%s)",
             segment_id,
             self.device_id,
+            batt_mode,
+            start_time,
+            end_time,
+            enabled,
         )
 
-        if self.api_version == "v1":
+        if self.api_version != "v1":
+            raise ServiceValidationError(
+                "Updating time segments requires token authentication"
+            )
+
+        try:
             # Use V1 API for token authentication
-            response = await self.hass.async_add_executor_job(
+            # The library's _process_response will raise GrowattV1ApiError if error_code != 0
+            await self.hass.async_add_executor_job(
                 self.api.min_write_time_segment,
                 self.device_id,
                 segment_id,
@@ -326,32 +276,19 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 end_time,
                 enabled,
             )
+        except growattServer.GrowattV1ApiError as err:
+            raise HomeAssistantError(f"API error updating time segment: {err}") from err
 
-            if hasattr(response, 'get'):
-                if response.get("error_code", 1) == 0:
-                    _LOGGER.info(
-                        "Successfully updated MIN/TLX time segment %s for device %s",
-                        segment_id,
-                        self.device_id,
-                    )
-                    # Trigger a refresh to update the data
-                    await self.async_refresh()
-                else:
-                    error_msg = response.get("error_msg", "Unknown error")
-                    _LOGGER.error(
-                        "Failed to update MIN/TLX time segment %s for device %s: %s",
-                        segment_id,
-                        self.device_id,
-                        error_msg,
-                    )
-                    raise HomeAssistantError(f"Failed to update time segment: {error_msg}")
-        else:
-            _LOGGER.warning(
-                "Time segment updates are only supported with V1 API (token authentication)"
-            )
-            raise HomeAssistantError(
-                "Time segment updates require token authentication"
-            )
+        # Update coordinator's cached data without making an API call (avoids rate limit)
+        if self.data:
+            # Update the time segment data in the cache
+            self.data[f"forcedTimeStart{segment_id}"] = start_time.strftime("%H:%M")
+            self.data[f"forcedTimeStop{segment_id}"] = end_time.strftime("%H:%M")
+            self.data[f"time{segment_id}Mode"] = batt_mode
+            self.data[f"forcedStopSwitch{segment_id}"] = 1 if enabled else 0
+
+            # Notify entities of the updated data (no API call)
+            self.async_set_updated_data(self.data)
 
     async def read_time_segments(self) -> list[dict]:
         """Read time segments from an inverter.
@@ -359,93 +296,74 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             List of dictionaries containing segment information
         """
-        _LOGGER.debug(
-            "Reading MIN/TLX time segments for device %s",
-            self.device_id,
-        )
+        _LOGGER.debug("Reading time segments for device %s", self.device_id)
 
         if self.api_version != "v1":
-            _LOGGER.warning(
-                "Reading time segments is only supported with V1 API (token authentication)"
-            )
-            raise HomeAssistantError(
+            raise ServiceValidationError(
                 "Reading time segments requires token authentication"
             )
 
         # Ensure we have current data
         if not self.data:
-            _LOGGER.debug("Triggering refresh to get time segments")
+            _LOGGER.debug("Coordinator data not available, triggering refresh")
             await self.async_refresh()
 
         time_segments = []
-        mode_names = {0: "Load First", 1: "Battery First", 2: "Grid First"}
 
-        try:
-            # Extract time segments from coordinator data
-            for i in range(1, 10):  # Segments 1-9
-                # Get raw time values
-                start_time_raw = self.data.get(f"forcedTimeStart{i}", "0:0")
-                end_time_raw = self.data.get(f"forcedTimeStop{i}", "0:0")
-
-                # Handle 'null' or empty values
-                if start_time_raw in ("null", None, ""):
-                    start_time_raw = "0:0"
-                if end_time_raw in ("null", None, ""):
-                    end_time_raw = "0:0"
-
-                # Format times with leading zeros (HH:MM)
-                try:
-                    start_parts = str(start_time_raw).split(":")
-                    start_hour = int(start_parts[0])
-                    start_min = int(start_parts[1])
-                    start_time = f"{start_hour:02d}:{start_min:02d}"
-                except (ValueError, IndexError):
-                    start_time = "00:00"
-
-                try:
-                    end_parts = str(end_time_raw).split(":")
-                    end_hour = int(end_parts[0])
-                    end_min = int(end_parts[1])
-                    end_time = f"{end_hour:02d}:{end_min:02d}"
-                except (ValueError, IndexError):
-                    end_time = "00:00"
-
-                # Get the mode value
-                mode_raw = self.data.get(f"time{i}Mode")
-                if mode_raw in ("null", None):
-                    batt_mode = None
-                else:
-                    try:
-                        batt_mode = int(mode_raw)
-                    except (ValueError, TypeError):
-                        batt_mode = None
-
-                # Get the enabled status
-                enabled_raw = self.data.get(f"forcedStopSwitch{i}", 0)
-                if enabled_raw in ("null", None):
-                    enabled = False
-                else:
-                    try:
-                        enabled = int(enabled_raw) == 1
-                    except (ValueError, TypeError):
-                        enabled = False
-
-                segment = {
-                    "segment_id": i,
-                    "batt_mode": batt_mode,
-                    "mode_name": mode_names.get(batt_mode, "Unknown"),
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "enabled": enabled,
-                }
-
-                time_segments.append(segment)
-                _LOGGER.debug("MIN/TLX time segment %s: %s", i, segment)
-
-        except Exception as err:
-            _LOGGER.error("Error reading MIN/TLX time segments: %s", err)
-            raise HomeAssistantError(
-                f"Error reading MIN/TLX time segments: {err}"
-            ) from err
+        # Extract time segments from coordinator data
+        for i in range(1, 10):  # Segments 1-9
+            segment = self._parse_time_segment(i)
+            time_segments.append(segment)
 
         return time_segments
+
+    def _parse_time_segment(self, segment_id: int) -> dict:
+        """Parse a single time segment from coordinator data."""
+        # Get raw time values - these should always be present from the API
+        start_time_raw = self.data.get(f"forcedTimeStart{segment_id}")
+        end_time_raw = self.data.get(f"forcedTimeStop{segment_id}")
+
+        # Handle 'null' or empty values from API
+        if start_time_raw in ("null", None, ""):
+            start_time_raw = "0:0"
+        if end_time_raw in ("null", None, ""):
+            end_time_raw = "0:0"
+
+        # Format times with leading zeros (HH:MM)
+        start_time = self._format_time(str(start_time_raw))
+        end_time = self._format_time(str(end_time_raw))
+
+        # Get battery mode
+        batt_mode_int = int(
+            self.data.get(f"time{segment_id}Mode", BATT_MODE_LOAD_FIRST)
+        )
+
+        # Map numeric mode to string key (matches update_time_segment input format)
+        mode_map = {
+            BATT_MODE_LOAD_FIRST: "load_first",
+            BATT_MODE_BATTERY_FIRST: "battery_first",
+            BATT_MODE_GRID_FIRST: "grid_first",
+        }
+        batt_mode = mode_map.get(batt_mode_int, "load_first")
+
+        # Get enabled status
+        enabled = bool(int(self.data.get(f"forcedStopSwitch{segment_id}", 0)))
+
+        return {
+            "segment_id": segment_id,
+            "start_time": start_time,
+            "end_time": end_time,
+            "batt_mode": batt_mode,
+            "enabled": enabled,
+        }
+
+    def _format_time(self, time_raw: str) -> str:
+        """Format time string to HH:MM format."""
+        try:
+            parts = str(time_raw).split(":")
+            hour = int(parts[0])
+            minute = int(parts[1])
+        except (ValueError, IndexError):
+            return "00:00"
+        else:
+            return f"{hour:02d}:{minute:02d}"

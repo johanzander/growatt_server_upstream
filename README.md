@@ -11,37 +11,25 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 ## Features
 
-**Current Version**: v1.6.0
+**Current Version**: v2.0.0
 **Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
 
-**All Changes from Base Version**:
+## What's New in v2.0.0
 
-1. `manifest.json` updated for custom component distribution
-2. [API Token authentication support][pr-149783] - Official V1 API for MIN/TLX devices
-3. [MIN inverter control][pr-153468] - Number and switch entities for controlling inverter settings
-4. **Rate limiting** - 5-minute throttle on API login to prevent account locking (fixes [issue #150732][issue-150732])
-5. **Fixed sensor naming** - Sensors now display proper translated names instead of generic device class names
-6. **Fixed timezone handling** - Corrected API throttling timezone bug that could cause excessive wait times
-7. **Enhanced TLX sensor coverage** - 14 new sensors for power and energy monitoring
-8. **Time of Use (TOU) control** - Service calls for reading/updating TOU settings: `growattserver.read_time_segments`, `growattserver.update_time_segment`
-9. **Energy Dashboard support** - Added state_class to all power and energy sensors for full Energy dashboard integration
+1. **HA Core Base**: Integration fully based on HA Core version 2026.1
+   - includes API Token authentication ([PR #149783][pr-149783])
+   - MIN inverter control ([PR #153468][pr-153468])
+   - Energy Dashboard support with `state_class`
+   - TOU control services, previously only available in upstream v1.6.0
+   - Enhanced TLX sensor coverage (14 additional sensors for power/energy monitoring)
 
-## What's New in v1.6.0
+2. **Config entry migration**: Seamless upgrade path from older versions - automatically migrates legacy configurations and resolves deprecated plant ID settings (based on [PR #159972](https://github.com/home-assistant/core/pull/159972))
+3. **Re-authentication flow**: Detects authentication failures and prompts users to re-enter credentials - prevents silent integration failures by guiding users through credential updates
+4. **API caching**: Prevents duplicate login during migration - caches authenticated sessions between migration and setup to avoid triggering account lockout (part of fix for [issue #154724](https://github.com/home-assistant/core/issues/154724))
 
-- **Energy Dashboard Integration**: Added `state_class` attributes to 34 power and energy sensors (9 power + 10 energy in MIX, 15 power in TLX), enabling proper integration with Home Assistant's Energy dashboard for tracking solar generation, consumption, and grid import/export
+## Kept from v1.6.0
 
-### MIN/TLX Inverter Control (V1 API)
-
-When using token authentication with MIN/TLX inverters:
-
-**Number Entities** (0-100%):
-- Charge power / Charge stop SOC
-- Discharge power / Discharge stop SOC
-
-**Switch Entities**:
-- AC charge enable/disable
-
-All control entities provide real-time feedback and proper error handling.
+**Persistent API throttling**: 5-minute cooldown protection that survives Home Assistant restarts - prevents account lockout from too many login attempts even after system reboots (fixes [issue #154724](https://github.com/home-assistant/core/issues/154724))
 
 ## Installation
 
