@@ -11,8 +11,13 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 ## Features
 
-**Current Version**: v2.0.0
-**Base Version**: Home Assistant Core 2025.9.0 Growatt Server integration
+**Current Version**: v2.1.0
+**Base Version**: Home Assistant Core 2026.2 Growatt Server integration
+
+## What's New in v2.1.0
+
+- **Bump growattServer to 1.9.0**: Updated the underlying Python library to the latest version for improved API compatibility and bug fixes
+- **Fix midnight bounce suppression**: Resolves Energy Dashboard double-counting for "today" sensors when the Growatt API delivers stale yesterday values after midnight reset ([#162378](https://github.com/home-assistant/core/issues/162378))
 
 ## What's New in v2.0.0
 
