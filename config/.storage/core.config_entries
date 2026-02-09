@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "minor_version": 5,
+  "key": "core.config_entries",
+  "data": {
+    "entries": [
+      {"created_at":"2026-02-05T15:56:06.708227+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"sun","entry_id":"01KGQ8955MYPQ9E81PZGBMX39H","minor_version":1,"modified_at":"2026-02-05T15:56:06.708230+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"import","subentries":[],"title":"Sun","unique_id":null,"version":1},
+      {"created_at":"2026-02-05T15:56:08.894071+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"backup","entry_id":"01KGQ8979YGHHNQ7S7WJ8T7KYA","minor_version":1,"modified_at":"2026-02-05T15:56:08.894075+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"system","subentries":[],"title":"Backup","unique_id":null,"version":1},
+      {"created_at":"2026-02-05T15:59:27.550791+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"shopping_list","entry_id":"01KGQ8F99YD541WKHMMXZC663M","minor_version":1,"modified_at":"2026-02-05T15:59:27.550807+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Shopping list","unique_id":"shopping_list","version":1},
+      {"created_at":"2026-02-05T15:59:28.519853+00:00","data":{"language":"en","tld":"com"},"disabled_by":null,"discovery_keys":{},"domain":"google_translate","entry_id":"01KGQ8FA87CSCAN1PPZ35QA7HH","minor_version":1,"modified_at":"2026-02-05T15:59:28.519856+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Google Translate text-to-speech","unique_id":null,"version":1},
+      {"created_at":"2026-02-05T15:59:28.853991+00:00","data":{"track_home":true},"disabled_by":null,"discovery_keys":{},"domain":"met","entry_id":"01KGQ8FAJN9XRG27ZVP08X0CAA","minor_version":1,"modified_at":"2026-02-05T15:59:28.853994+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Home","unique_id":null,"version":1},
+      {"created_at":"2026-02-05T15:59:29.531182+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"radio_browser","entry_id":"01KGQ8FB7VFB8H95J9GMCTQQQ4","minor_version":1,"modified_at":"2026-02-05T15:59:29.531185+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Radio Browser","unique_id":null,"version":1},
+      {"created_at":"2026-02-05T16:19:39.539216+00:00","data":{"token":"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"},"disabled_by":null,"discovery_keys":{},"domain":"hacs","entry_id":"01KGQ9M8WKHZ62QSXGW8SVGE83","minor_version":1,"modified_at":"2026-02-05T16:19:39.539222+00:00","options":{"experimental":true},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"user","subentries":[],"title":"","unique_id":null,"version":1}
+    ]
+  }
+}
