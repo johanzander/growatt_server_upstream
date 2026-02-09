@@ -41,3 +41,5 @@ env/
 .idea/
 *.swp
 *.swo
+custom_components/hacs
+config/*
