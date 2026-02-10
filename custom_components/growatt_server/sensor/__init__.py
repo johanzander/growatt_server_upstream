@@ -51,11 +51,11 @@ async def async_setup_entry(
         sensor_descriptions: list = []
         if device_coordinator.device_type == "inverter":
             sensor_descriptions = list(INVERTER_SENSOR_TYPES)
-        elif device_coordinator.device_type in ("tlx", "min", "sph"):
+        elif device_coordinator.device_type in ("tlx", "min"):
             sensor_descriptions = list(TLX_SENSOR_TYPES)
         elif device_coordinator.device_type == "storage":
             sensor_descriptions = list(STORAGE_SENSOR_TYPES)
-        elif device_coordinator.device_type == "mix":
+        elif device_coordinator.device_type in ("mix","sph"):
             sensor_descriptions = list(MIX_SENSOR_TYPES)
         else:
             _LOGGER.debug(

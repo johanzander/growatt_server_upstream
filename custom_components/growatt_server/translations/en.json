@@ -158,6 +158,9 @@
       "mix_export_to_grid_today": {
         "name": "Export to grid today"
       },
+      "mix_frequency": {
+        "name": "AC frequency"
+      },
       "mix_grid_voltage": {
         "name": "Grid voltage"
       },
@@ -197,6 +200,9 @@
       "mix_pv2_voltage": {
         "name": "PV2 voltage"
       },
+      "mix_reactive_voltage": {
+        "name": "Reactive voltage"
+      },
       "mix_self_consumption_today": {
         "name": "Self-consumption today (solar + battery)"
       },
@@ -208,6 +214,21 @@
       },
       "mix_statement_of_charge": {
         "name": "State of charge"
+      },
+      "mix_temperature_1": {
+        "name": "Temperature 1"
+      },
+      "mix_temperature_2": {
+        "name": "Temperature 2"
+      },
+      "mix_temperature_3": {
+        "name": "Temperature 3"
+      },
+      "mix_temperature_4": {
+        "name": "Temperature 4"
+      },
+      "mix_temperature_5": {
+        "name": "Temperature 5"
       },
       "mix_system_production_today": {
         "name": "System production today (self-consumption + export)"
