@@ -114,6 +114,23 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 sph_details = self.api.sph_detail(self.device_id)
                 sph_energy = self.api.sph_energy(self.device_id)
+                sph_details["lastdataupdate"] = None
+
+                date_str = sph_energy.get("time")
+                date_format = "%Y-%m-%d %H:%M:%S"
+                tz = dt_util.get_default_time_zone()
+                if date_str is not None:
+                    naive_dt = datetime.datetime.strptime(date_str, date_format)
+                    aware_dt = naive_dt.replace(tzinfo=tz)
+                    sph_details["lastdataupdate"] = aware_dt
+
+
+                sph_energy["ppv1"] = sph_energy.get("ppv1", 0) / 1000  # W to kW
+                sph_energy["ppv2"] = sph_energy.get("ppv2", 0) / 1000  # W to kW
+                sph_energy["ppv"] = sph_energy.get("ppv", 0) / 1000  # W to kW
+                sph_energy["accdischargePowerKW"] = (
+                    sph_energy.get("accdischargePower", 0) / 1000
+                )
             except growattServer.GrowattV1ApiError as err:
                 raise UpdateFailed(f"Error fetching sph device data: {err}") from err
 
