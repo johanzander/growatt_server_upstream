@@ -55,12 +55,12 @@ async def async_setup_entry(
     """Set up Growatt switch entities."""
     runtime_data = entry.runtime_data
 
-    # Add switch entities for each MIN device (only supported with V1 API)
+    # Add switch entities for each MIN/SPH device (only supported with V1 API)
     async_add_entities(
         GrowattSwitch(device_coordinator, description)
         for device_coordinator in runtime_data.devices.values()
         if (
-            device_coordinator.device_type == "min"
+            device_coordinator.device_type in ("min", "sph")
             and device_coordinator.api_version == "v1"
         )
         for description in MIN_SWITCH_TYPES
@@ -116,13 +116,25 @@ class GrowattSwitch(CoordinatorEntity[GrowattCoordinator], SwitchEntity):
         api_value = int(state)
 
         try:
-            # Use V1 API to write parameter
-            await self.hass.async_add_executor_job(
-                self.coordinator.api.min_write_parameter,
-                self.coordinator.device_id,
-                parameter_id,
-                api_value,
-            )
+            # Use V1 API to write parameter - use appropriate method for device type
+            if self.coordinator.device_type == "min":
+                await self.hass.async_add_executor_job(
+                    self.coordinator.api.min_write_parameter,
+                    self.coordinator.device_id,
+                    parameter_id,
+                    api_value,
+                )
+            elif self.coordinator.device_type == "sph":
+                await self.hass.async_add_executor_job(
+                    self.coordinator.api.sph_write_parameter,
+                    self.coordinator.device_id,
+                    parameter_id,
+                    api_value,
+                )
+            else:
+                raise HomeAssistantError(
+                    f"Switch not supported for device type: {self.coordinator.device_type}"
+                )
         except GrowattV1ApiError as e:
             raise HomeAssistantError(f"Error while setting switch state: {e}") from e
 

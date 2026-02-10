@@ -242,22 +242,29 @@ def get_device_list_v1(
             f"API error during device list: {e} (Code: {getattr(e, 'error_code', None)}, Message: {getattr(e, 'error_msg', None)})"
         ) from e
     devices = devices_dict.get("devices", [])
-    # Only MIN device (type = 7) support implemented in current V1 API
-    supported_devices = [
-        {
-            "deviceSn": device.get("device_sn", ""),
-            "deviceType": "min",
-        }
-        for device in devices
-        if device.get("type") == 7
-    ]
-
+    # MIN device (type 7) and SPH device (type 6) support implemented in current V1 API
+    supported_devices = []
     for device in devices:
-        if device.get("type") != 7:
+        device_type_num = device.get("type")
+        if device_type_num == 7:
+            supported_devices.append(
+                {
+                    "deviceSn": device.get("device_sn", ""),
+                    "deviceType": "min",
+                }
+            )
+        elif device_type_num == 5:
+            supported_devices.append(
+                {
+                    "deviceSn": device.get("device_sn", ""),
+                    "deviceType": "sph",
+                }
+            )
+        else:
             _LOGGER.warning(
                 "Device %s with type %s not supported in Open API V1, skipping",
                 device.get("device_sn", ""),
-                device.get("type"),
+                device_type_num,
             )
     return supported_devices, plant_id
 
@@ -284,7 +291,7 @@ async def _setup_coordinators_and_platforms(
 ) -> None:
     """Set up coordinators and platforms (common logic for immediate and delayed setup)."""
     config = config_entry.data
-    
+
     # Get device list (with throttling for Classic API)
     if api_version == "classic":
         devices, plant_id = await throttle_manager.throttled_call(
@@ -316,7 +323,7 @@ async def _setup_coordinators_and_platforms(
             plant_id,
         )
         for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min"]
+        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
     }
 
     # Perform first refresh
@@ -387,7 +394,7 @@ async def _handle_throttled_setup(
     async def delayed_setup():
         """Wait for throttle period and complete setup."""
         remaining_seconds = minutes_remaining * 60
-        
+
         # Wait with live countdown updates
         while remaining_seconds > 0:
             wait_chunk = min(30, remaining_seconds)
@@ -487,7 +494,7 @@ async def async_setup_entry(
         # would trigger rate limiting.
         cache_key = f"{CACHED_API_KEY}{config_entry.entry_id}"
         cached_api = hass.data.get(DOMAIN, {}).pop(cache_key, None)
-        
+
         _LOGGER.debug(
             "Checking for cached API with key %s: %s",
             cache_key,
@@ -545,7 +552,7 @@ async def async_setup_entry(
             plant_id,
         )
         for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min"]
+        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
     }
 
     # Update runtime_data with coordinators
@@ -578,9 +585,7 @@ async def async_unload_entry(
         and config_entry.runtime_data is not None
         and config_entry.runtime_data.total_coordinator is not None
     ):
-        return await hass.config_entries.async_unload_platforms(
-            config_entry, PLATFORMS
-        )
+        return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
     # No platforms were loaded, so unload is automatically successful
     _LOGGER.debug(

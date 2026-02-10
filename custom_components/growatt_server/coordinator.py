@@ -110,7 +110,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.data = min_info
             _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
         elif self.device_type == "sph":
-            # Open API V1: min device
+            # Open API V1: sph device
             try:
                 sph_details = self.api.sph_detail(self.device_id)
                 sph_energy = self.api.sph_energy(self.device_id)
@@ -307,15 +307,42 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Use V1 API for token authentication
             # The library's _process_response will raise GrowattV1ApiError if error_code != 0
-            await self.hass.async_add_executor_job(
-                self.api.min_write_time_segment,
-                self.device_id,
-                segment_id,
-                batt_mode,
-                start_time,
-                end_time,
-                enabled,
-            )
+            if self.device_type == "min":
+                await self.hass.async_add_executor_job(
+                    self.api.min_write_time_segment,
+                    self.device_id,
+                    segment_id,
+                    batt_mode,
+                    start_time,
+                    end_time,
+                    enabled,
+                )
+            elif self.device_type == "sph":
+                # SPH uses different methods for charge vs discharge times
+                # BATT_MODE_BATTERY_FIRST (1) = charge mode
+                # BATT_MODE_LOAD_FIRST (0) and BATT_MODE_GRID_FIRST (2) = discharge modes
+                if batt_mode == BATT_MODE_BATTERY_FIRST:
+                    await self.hass.async_add_executor_job(
+                        self.api.sph_write_ac_charge_times,
+                        self.device_id,
+                        segment_id,
+                        start_time,
+                        end_time,
+                        enabled,
+                    )
+                else:
+                    await self.hass.async_add_executor_job(
+                        self.api.sph_write_ac_discharge_times,
+                        self.device_id,
+                        segment_id,
+                        start_time,
+                        end_time,
+                        enabled,
+                    )
+            else:
+                raise ServiceValidationError(
+                    f"Time segment updates not supported for device type: {self.device_type}"
+                )
         except growattServer.GrowattV1ApiError as err:
             raise HomeAssistantError(f"API error updating time segment: {err}") from err
 

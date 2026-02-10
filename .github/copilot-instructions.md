@@ -102,10 +102,12 @@ Use `@pytest.mark.no_throttle_mock` marker to disable throttle mocking (see [tes
 Sensors access via `coordinator.data.get(entity_description.api_key)`.
 
 ### Services Architecture
-Services in [services.py](custom_components/growatt_server/services.py) are **MIN device-only** and **V1 API-only**:
+Services in [services.py](custom_components/growatt_server/services.py) support **MIN and SPH devices** with **V1 API-only**:
 - `update_time_segment` / `clear_time_segment` / `get_time_segments` for TOU (Time of Use) control
 - Device selection uses Home Assistant device registry, not serial numbers
 - Helper `get_coordinator(device_id)` maps device_id → serial → coordinator
+- MIN uses `min_write_time_segment`
+- SPH uses `sph_write_ac_charge_times` (battery-first mode) and `sph_write_ac_discharge_times` (other modes)
 
 ### Re-authentication Flow
 When API returns auth failure (Classic API: msg=`LOGIN_INVALID_AUTH_CODE`), integration triggers reauth flow. See [config_flow.py](custom_components/growatt_server/config_flow.py#L64-L105) for the `async_step_reauth_confirm` implementation.
@@ -114,7 +116,7 @@ When API returns auth failure (Classic API: msg=`LOGIN_INVALID_AUTH_CODE`), inte
 
 1. **Plant ID vs Device ID**: `plant_id` identifies the plant (site), `device_id` is the serial number. The "total" coordinator uses `plant_id`, device coordinators use `device_id`.
 
-2. **API Version Mismatches**: Some features (MIN control, services) only work with V1 API. Always check `api_version` before accessing V1-specific features.
+2. **API Version Mismatches**: Some features (MIN/SPH control, services) only work with V1 API. Always check `api_version` before accessing V1-specific features.
 
 3. **Coordinator Updates**: Coordinators run every 5 minutes. Don't assume fresh data - use `await coordinator.async_request_refresh()` to force updates when needed.
 
