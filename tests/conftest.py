@@ -287,6 +287,7 @@ def mock_config_entry_classic_default_plant() -> MockConfigEntry:
             "name": "Test Plant",
         },
         unique_id="plant_default",
+        minor_version=0,  # triggers migration, where DEFAULT_PLANT_ID resolution now lives
     )
 
 

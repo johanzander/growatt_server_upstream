@@ -260,7 +260,7 @@ async def test_classic_api_plant_list_exceptions(
     mock_config_entry_classic_default_plant: MockConfigEntry,
     exception: Exception,
 ) -> None:
-    """Test Classic API setup with plant list exceptions (default plant_id path)."""
+    """Test Classic API migration fails when plant_list raises (default plant_id path)."""
     # Login succeeds
     mock_growatt_classic_api.login.return_value = {
         "success": True,
@@ -272,7 +272,9 @@ async def test_classic_api_plant_list_exceptions(
 
     await setup_integration(hass, mock_config_entry_classic_default_plant)
 
-    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.SETUP_ERROR
+    # DEFAULT_PLANT_ID resolution now happens in async_migrate_entry (minor_version 0→1).
+    # A plant_list failure there returns False → MIGRATION_ERROR (not SETUP_ERROR).
+    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.MIGRATION_ERROR
 
 
 async def test_classic_api_plant_list_no_plants(
@@ -280,7 +282,7 @@ async def test_classic_api_plant_list_no_plants(
     mock_growatt_classic_api,
     mock_config_entry_classic_default_plant: MockConfigEntry,
 ) -> None:
-    """Test Classic API setup when plant list returns no plants."""
+    """Test Classic API migration fails when plant list returns no plants."""
     # Login succeeds
     mock_growatt_classic_api.login.return_value = {
         "success": True,
@@ -292,7 +294,9 @@ async def test_classic_api_plant_list_no_plants(
 
     await setup_integration(hass, mock_config_entry_classic_default_plant)
 
-    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.SETUP_ERROR
+    # DEFAULT_PLANT_ID resolution now happens in async_migrate_entry (minor_version 0→1).
+    # An empty plant_list there returns False → MIGRATION_ERROR (not SETUP_ERROR).
+    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.MIGRATION_ERROR
 
 
 @pytest.mark.parametrize(
