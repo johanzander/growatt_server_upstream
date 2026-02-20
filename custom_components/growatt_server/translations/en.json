@@ -221,65 +221,8 @@
       "mix_wattage_pv_all": {
         "name": "All PV wattage"
       },
-      "sph_battery_charge": {
-        "name": "Battery charging"
-      },
-      "sph_battery_charge_lifetime": {
-        "name": "Lifetime battery charged"
-      },
-      "sph_battery_charge_today": {
-        "name": "Battery charged today"
-      },
-      "sph_battery_discharge_lifetime": {
-        "name": "Lifetime battery discharged"
-      },
-      "sph_battery_discharge_today": {
-        "name": "Battery discharged today"
-      },
-      "sph_battery_discharge_w": {
-        "name": "Battery discharging W"
-      },
-      "sph_battery_voltage": {
-        "name": "Battery voltage"
-      },
-      "sph_export_to_grid": {
-        "name": "Export to grid"
-      },
       "sph_grid_frequency": {
         "name": "AC frequency"
-      },
-      "sph_grid_voltage": {
-        "name": "Grid voltage"
-      },
-      "sph_import_from_grid": {
-        "name": "Import from grid"
-      },
-      "sph_import_from_grid_today": {
-        "name": "Import from grid today"
-      },
-      "sph_last_update": {
-        "name": "Last data update"
-      },
-      "sph_pv1_voltage": {
-        "name": "PV1 voltage"
-      },
-      "sph_pv2_voltage": {
-        "name": "PV2 voltage"
-      },
-      "sph_self_consumption_today": {
-        "name": "Self-consumption today"
-      },
-      "sph_solar_generation_lifetime": {
-        "name": "Lifetime solar energy"
-      },
-      "sph_solar_generation_today": {
-        "name": "Solar energy today"
-      },
-      "sph_statement_of_charge": {
-        "name": "State of charge"
-      },
-      "sph_system_production_today": {
-        "name": "System production today"
       },
       "sph_temperature_1": {
         "name": "Temperature 1"
@@ -295,15 +238,6 @@
       },
       "sph_temperature_5": {
         "name": "Temperature 5"
-      },
-      "sph_wattage_pv_1": {
-        "name": "PV1 wattage"
-      },
-      "sph_wattage_pv_2": {
-        "name": "PV2 wattage"
-      },
-      "sph_wattage_pv_all": {
-        "name": "All PV wattage"
       },
       "storage_ac_input_frequency_out": {
         "name": "AC input frequency"

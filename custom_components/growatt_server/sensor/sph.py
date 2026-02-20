@@ -1,4 +1,11 @@
-"""Growatt Sensor definitions for the SPH type (Open API V1)."""
+"""Growatt Sensor definitions for the SPH type (Open API V1).
+
+Entity keys deliberately reuse mix_* names where a Classic API equivalent exists,
+so that users migrating from Classic API (where SPH appeared as "mix") to V1 API
+retain their Energy Dashboard history (the unique_id includes the key name).
+
+Sensors with no Classic API equivalent use sph_* keys.
+"""
 
 from __future__ import annotations
 
@@ -15,80 +22,201 @@ from homeassistant.const import (
 from .sensor_entity_description import GrowattSensorEntityDescription
 
 SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
+    # ------------------------------------------------------------------ #
+    # Sensors using mix_* keys for backward-compat with Classic API users #
+    # ------------------------------------------------------------------ #
+
     # Values from 'sph_detail' API call (device/mix/mix_data_info)
     GrowattSensorEntityDescription(
-        key="sph_statement_of_charge",
-        translation_key="sph_statement_of_charge",
+        key="mix_statement_of_charge",
+        translation_key="mix_statement_of_charge",
         api_key="bmsSOC",
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
     ),
     GrowattSensorEntityDescription(
-        key="sph_battery_voltage",
-        translation_key="sph_battery_voltage",
+        key="mix_battery_voltage",
+        translation_key="mix_battery_voltage",
         api_key="vbat",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
     ),
     GrowattSensorEntityDescription(
-        key="sph_pv1_voltage",
-        translation_key="sph_pv1_voltage",
+        key="mix_pv1_voltage",
+        translation_key="mix_pv1_voltage",
         api_key="vpv1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
     ),
     GrowattSensorEntityDescription(
-        key="sph_pv2_voltage",
-        translation_key="sph_pv2_voltage",
+        key="mix_pv2_voltage",
+        translation_key="mix_pv2_voltage",
         api_key="vpv2",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
     ),
     GrowattSensorEntityDescription(
-        key="sph_grid_voltage",
-        translation_key="sph_grid_voltage",
+        key="mix_grid_voltage",
+        translation_key="mix_grid_voltage",
         api_key="vac1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
     ),
     GrowattSensorEntityDescription(
-        key="sph_grid_frequency",
-        translation_key="sph_grid_frequency",
-        api_key="fac",
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        device_class=SensorDeviceClass.FREQUENCY,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_battery_charge",
-        translation_key="sph_battery_charge",
+        key="mix_battery_charge",
+        translation_key="mix_battery_charge",
         api_key="bdc1ChargePower",
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     GrowattSensorEntityDescription(
-        key="sph_battery_discharge_w",
-        translation_key="sph_battery_discharge_w",
+        key="mix_battery_discharge_w",
+        translation_key="mix_battery_discharge_w",
         api_key="bdc1DischargePower",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     GrowattSensorEntityDescription(
-        key="sph_export_to_grid",
-        translation_key="sph_export_to_grid",
+        key="mix_battery_discharge_kw",
+        translation_key="mix_battery_discharge_kw",
+        api_key="bdc1DischargePowerKW",  # synthetic kW field created in coordinator
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_export_to_grid",
+        translation_key="mix_export_to_grid",
         api_key="pacToGridTotal",
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     GrowattSensorEntityDescription(
-        key="sph_import_from_grid",
-        translation_key="sph_import_from_grid",
+        key="mix_import_from_grid",
+        translation_key="mix_import_from_grid",
         api_key="pacToUserR",
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    # Values from 'sph_energy' API call (device/mix/mix_last_data)
+    # Note: ppv1/ppv2/ppv are returned in W by the API but converted to kW
+    # in the coordinator to match the units Classic API mix sensors used.
+    GrowattSensorEntityDescription(
+        key="mix_wattage_pv_1",
+        translation_key="mix_wattage_pv_1",
+        api_key="ppv1",  # converted W→kW in coordinator
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_wattage_pv_2",
+        translation_key="mix_wattage_pv_2",
+        api_key="ppv2",  # converted W→kW in coordinator
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_wattage_pv_all",
+        translation_key="mix_wattage_pv_all",
+        api_key="ppv",  # converted W→kW in coordinator
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_battery_charge_today",
+        translation_key="mix_battery_charge_today",
+        api_key="echarge1Today",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_battery_charge_lifetime",
+        translation_key="mix_battery_charge_lifetime",
+        api_key="echarge1Total",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_battery_discharge_today",
+        translation_key="mix_battery_discharge_today",
+        api_key="edischarge1Today",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_battery_discharge_lifetime",
+        translation_key="mix_battery_discharge_lifetime",
+        api_key="edischarge1Total",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_solar_generation_today",
+        translation_key="mix_solar_generation_today",
+        api_key="epvtoday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_solar_generation_lifetime",
+        translation_key="mix_solar_generation_lifetime",
+        api_key="epvTotal",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_system_production_today",
+        translation_key="mix_system_production_today",
+        api_key="esystemtoday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_self_consumption_today",
+        translation_key="mix_self_consumption_today",
+        api_key="eselfToday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_import_from_grid_today",
+        translation_key="mix_import_from_grid_today",
+        api_key="etoUserToday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_last_update",
+        translation_key="mix_last_update",
+        api_key="lastdataupdate",
+        device_class=SensorDeviceClass.TIMESTAMP,
+    ),
+
+    # ------------------------------------------------------------------ #
+    # SPH-specific sensors with sph_* keys (no Classic API equivalent)   #
+    # ------------------------------------------------------------------ #
+    GrowattSensorEntityDescription(
+        key="sph_grid_frequency",
+        translation_key="sph_grid_frequency",
+        api_key="fac",
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     GrowattSensorEntityDescription(
@@ -130,108 +258,5 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
-    ),
-    # Values from 'sph_energy' API call (device/mix/mix_last_data)
-    GrowattSensorEntityDescription(
-        key="sph_battery_charge_today",
-        translation_key="sph_battery_charge_today",
-        api_key="echarge1Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_battery_charge_lifetime",
-        translation_key="sph_battery_charge_lifetime",
-        api_key="echarge1Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_battery_discharge_today",
-        translation_key="sph_battery_discharge_today",
-        api_key="edischarge1Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_battery_discharge_lifetime",
-        translation_key="sph_battery_discharge_lifetime",
-        api_key="edischarge1Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_solar_generation_today",
-        translation_key="sph_solar_generation_today",
-        api_key="epvtoday",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_solar_generation_lifetime",
-        translation_key="sph_solar_generation_lifetime",
-        api_key="epvTotal",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_wattage_pv_1",
-        translation_key="sph_wattage_pv_1",
-        api_key="ppv1",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_wattage_pv_2",
-        translation_key="sph_wattage_pv_2",
-        api_key="ppv2",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_wattage_pv_all",
-        translation_key="sph_wattage_pv_all",
-        api_key="ppv",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_system_production_today",
-        translation_key="sph_system_production_today",
-        api_key="esystemtoday",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_self_consumption_today",
-        translation_key="sph_self_consumption_today",
-        api_key="eselfToday",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_import_from_grid_today",
-        translation_key="sph_import_from_grid_today",
-        api_key="etoUserToday",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    GrowattSensorEntityDescription(
-        key="sph_last_update",
-        translation_key="sph_last_update",
-        api_key="lastdataupdate",
-        device_class=SensorDeviceClass.TIMESTAMP,
     ),
 )
