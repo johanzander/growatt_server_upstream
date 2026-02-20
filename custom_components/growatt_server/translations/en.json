@@ -39,14 +39,14 @@
           "token": "API Token",
           "url": "Server region"
         },
-        "description": "Token authentication is only supported for MIN/TLX devices. For other device types, please use username/password authentication.",
+        "description": "Token authentication supports MIN and SPH devices. For other device types, please use username/password authentication.",
         "title": "Enter your API token"
       },
       "user": {
-        "description": "Note: API Token authentication is currently only supported for MIN/TLX devices. For other device types, please use Username & Password authentication.",
+        "description": "Note: API Token authentication is currently only supported for MIN and SPH devices. For other device types, please use Username & Password authentication.",
         "menu_options": {
           "password_auth": "Username & Password",
-          "token_auth": "API Token (MIN/TLX only)"
+          "token_auth": "API Token (MIN/SPH)"
         },
         "title": "Choose authentication method"
       }
@@ -593,6 +593,138 @@
         }
       },
       "name": "Update time segment"
+    },
+    "write_ac_charge_times": {
+      "description": "Set AC charge time periods and settings for an SPH inverter.",
+      "fields": {
+        "device_id": {
+          "description": "The Growatt SPH device to configure.",
+          "name": "Device"
+        },
+        "charge_power": {
+          "description": "Battery charging power limit as a percentage (0-100).",
+          "name": "Charge power %"
+        },
+        "charge_stop_soc": {
+          "description": "Stop charging when battery reaches this state of charge percentage (0-100).",
+          "name": "Charge stop SOC %"
+        },
+        "mains_enabled": {
+          "description": "Whether grid/mains AC charging is enabled.",
+          "name": "Mains AC charge enabled"
+        },
+        "period_1_start": {
+          "description": "Start time for charge period 1 (HH:MM format).",
+          "name": "Period 1 start"
+        },
+        "period_1_end": {
+          "description": "End time for charge period 1 (HH:MM format).",
+          "name": "Period 1 end"
+        },
+        "period_1_enabled": {
+          "description": "Whether charge period 1 is active.",
+          "name": "Period 1 enabled"
+        },
+        "period_2_start": {
+          "description": "Start time for charge period 2 (HH:MM format).",
+          "name": "Period 2 start"
+        },
+        "period_2_end": {
+          "description": "End time for charge period 2 (HH:MM format).",
+          "name": "Period 2 end"
+        },
+        "period_2_enabled": {
+          "description": "Whether charge period 2 is active.",
+          "name": "Period 2 enabled"
+        },
+        "period_3_start": {
+          "description": "Start time for charge period 3 (HH:MM format).",
+          "name": "Period 3 start"
+        },
+        "period_3_end": {
+          "description": "End time for charge period 3 (HH:MM format).",
+          "name": "Period 3 end"
+        },
+        "period_3_enabled": {
+          "description": "Whether charge period 3 is active.",
+          "name": "Period 3 enabled"
+        }
+      },
+      "name": "Set AC charge times (SPH)"
+    },
+    "write_ac_discharge_times": {
+      "description": "Set AC discharge time periods and settings for an SPH inverter.",
+      "fields": {
+        "device_id": {
+          "description": "The Growatt SPH device to configure.",
+          "name": "Device"
+        },
+        "discharge_power": {
+          "description": "Battery discharging power limit as a percentage (0-100).",
+          "name": "Discharge power %"
+        },
+        "discharge_stop_soc": {
+          "description": "Stop discharging when battery reaches this state of charge percentage (0-100).",
+          "name": "Discharge stop SOC %"
+        },
+        "period_1_start": {
+          "description": "Start time for discharge period 1 (HH:MM format).",
+          "name": "Period 1 start"
+        },
+        "period_1_end": {
+          "description": "End time for discharge period 1 (HH:MM format).",
+          "name": "Period 1 end"
+        },
+        "period_1_enabled": {
+          "description": "Whether discharge period 1 is active.",
+          "name": "Period 1 enabled"
+        },
+        "period_2_start": {
+          "description": "Start time for discharge period 2 (HH:MM format).",
+          "name": "Period 2 start"
+        },
+        "period_2_end": {
+          "description": "End time for discharge period 2 (HH:MM format).",
+          "name": "Period 2 end"
+        },
+        "period_2_enabled": {
+          "description": "Whether discharge period 2 is active.",
+          "name": "Period 2 enabled"
+        },
+        "period_3_start": {
+          "description": "Start time for discharge period 3 (HH:MM format).",
+          "name": "Period 3 start"
+        },
+        "period_3_end": {
+          "description": "End time for discharge period 3 (HH:MM format).",
+          "name": "Period 3 end"
+        },
+        "period_3_enabled": {
+          "description": "Whether discharge period 3 is active.",
+          "name": "Period 3 enabled"
+        }
+      },
+      "name": "Set AC discharge times (SPH)"
+    },
+    "read_ac_charge_times": {
+      "description": "Read current AC charge time periods and settings from an SPH inverter.",
+      "fields": {
+        "device_id": {
+          "description": "The Growatt SPH device to read from.",
+          "name": "Device"
+        }
+      },
+      "name": "Read AC charge times (SPH)"
+    },
+    "read_ac_discharge_times": {
+      "description": "Read current AC discharge time periods and settings from an SPH inverter.",
+      "fields": {
+        "device_id": {
+          "description": "The Growatt SPH device to read from.",
+          "name": "Device"
+        }
+      },
+      "name": "Read AC discharge times (SPH)"
     }
   },
   "title": "Growatt Server"

@@ -55,7 +55,9 @@ async def async_setup_entry(
             sensor_descriptions = list(TLX_SENSOR_TYPES)
         elif device_coordinator.device_type == "storage":
             sensor_descriptions = list(STORAGE_SENSOR_TYPES)
-        elif device_coordinator.device_type == "mix":
+        elif device_coordinator.device_type in ("mix", "sph"):
+            # SPH uses the same API endpoints and data format as MIX (both route through
+            # device/mix/* in the V1 library), so MIX_SENSOR_TYPES applies to both.
             sensor_descriptions = list(MIX_SENSOR_TYPES)
         else:
             _LOGGER.debug(

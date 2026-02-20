@@ -260,7 +260,7 @@ async def test_classic_api_plant_list_exceptions(
     mock_config_entry_classic_default_plant: MockConfigEntry,
     exception: Exception,
 ) -> None:
-    """Test Classic API setup with plant list exceptions (default plant_id path)."""
+    """Test Classic API migration fails when plant_list raises (default plant_id path)."""
     # Login succeeds
     mock_growatt_classic_api.login.return_value = {
         "success": True,
@@ -272,7 +272,9 @@ async def test_classic_api_plant_list_exceptions(
 
     await setup_integration(hass, mock_config_entry_classic_default_plant)
 
-    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.SETUP_ERROR
+    # DEFAULT_PLANT_ID resolution now happens in async_migrate_entry (minor_version 0→1).
+    # A plant_list failure there returns False → MIGRATION_ERROR (not SETUP_ERROR).
+    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.MIGRATION_ERROR
 
 
 async def test_classic_api_plant_list_no_plants(
@@ -280,7 +282,7 @@ async def test_classic_api_plant_list_no_plants(
     mock_growatt_classic_api,
     mock_config_entry_classic_default_plant: MockConfigEntry,
 ) -> None:
-    """Test Classic API setup when plant list returns no plants."""
+    """Test Classic API migration fails when plant list returns no plants."""
     # Login succeeds
     mock_growatt_classic_api.login.return_value = {
         "success": True,
@@ -292,7 +294,9 @@ async def test_classic_api_plant_list_no_plants(
 
     await setup_integration(hass, mock_config_entry_classic_default_plant)
 
-    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.SETUP_ERROR
+    # DEFAULT_PLANT_ID resolution now happens in async_migrate_entry (minor_version 0→1).
+    # An empty plant_list there returns False → MIGRATION_ERROR (not SETUP_ERROR).
+    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.MIGRATION_ERROR
 
 
 @pytest.mark.parametrize(
@@ -367,7 +371,7 @@ async def test_v1_api_unsupported_device_type(
     mock_growatt_v1_api,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test V1 API logs warning for unsupported device types (non-MIN)."""
+    """Test V1 API logs warning for unsupported device types (non-MIN, non-SPH)."""
     config = {
         CONF_TOKEN: "test_token_123",
         CONF_URL: "https://openapi.growatt.com/",
@@ -380,11 +384,11 @@ async def test_v1_api_unsupported_device_type(
         unique_id="plant_123",
     )
 
-    # Return mix of MIN (type 7) and other device types
+    # Return mix of MIN (type 7) and an unknown device type (99 is not supported)
     mock_growatt_v1_api.device_list.return_value = {
         "devices": [
             {"device_sn": "MIN123456", "type": 7},  # Supported
-            {"device_sn": "TLX789012", "type": 5},  # Unsupported
+            {"device_sn": "UNK999999", "type": 99},  # Unsupported type
         ]
     }
 
@@ -392,4 +396,4 @@ async def test_v1_api_unsupported_device_type(
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
     # Verify warning was logged for unsupported device
-    assert "Device TLX789012 with type 5 not supported in Open API V1" in caplog.text
+    assert "Device UNK999999 with type 99 not supported in Open API V1" in caplog.text

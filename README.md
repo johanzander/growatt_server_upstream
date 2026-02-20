@@ -11,8 +11,13 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 ## Features
 
-**Current Version**: v2.1.0
+**Current Version**: v2.2.0
 **Base Version**: Home Assistant Core 2026.2 Growatt Server integration
+
+## What's New in v2.2.0
+
+- **SPH device support (Open API V1)**: SPH inverters (type 5) are now supported alongside MIN (type 7) in the Open API V1 path. Sensors, switches, and number entities are all available for SPH devices.
+- **AC charge/discharge time services**: Four new services for SPH devices — `write_ac_charge_times`, `read_ac_charge_times`, `write_ac_discharge_times`, `read_ac_discharge_times` — allow full control of battery charge/discharge schedules.
 
 ## What's New in v2.1.0
 
