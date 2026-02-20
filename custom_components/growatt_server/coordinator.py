@@ -5,12 +5,15 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 import growattServer
+from requests import RequestException
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -163,11 +166,87 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self.data
 
+    async def _async_re_login(self) -> bool:
+        """Attempt to re-login to the Growatt API when session expires (Classic API only).
+
+        Uses a shared lock to prevent multiple coordinators from logging in
+        simultaneously, and a 60-second cooldown to avoid redundant logins.
+        """
+        if self.api_version != "classic":
+            return False
+
+        runtime_data = self.config_entry.runtime_data
+
+        async with runtime_data.login_lock:
+            # If another coordinator already re-logged in within the last 60s,
+            # the session should be valid — skip redundant login
+            now = time.monotonic()
+            if (
+                runtime_data.last_login_time
+                and (now - runtime_data.last_login_time) < 60
+            ):
+                _LOGGER.debug(
+                    "Session recently restored (%.0fs ago), skipping re-login for %s",
+                    now - runtime_data.last_login_time,
+                    self.device_id,
+                )
+                return True
+
+            config = self.config_entry.data
+            username = config.get(CONF_USERNAME)
+            password = config.get(CONF_PASSWORD)
+
+            if not username or not password:
+                _LOGGER.error(
+                    "Cannot re-login for %s: credentials not available",
+                    self.device_id,
+                )
+                return False
+
+            try:
+                login_response = await self.hass.async_add_executor_job(
+                    self.api.login, username, password
+                )
+                if login_response.get("success"):
+                    runtime_data.last_login_time = now
+                    _LOGGER.info(
+                        "Successfully re-authenticated with Growatt API "
+                        "(triggered by %s)",
+                        self.device_id,
+                    )
+                    return True
+                _LOGGER.error(
+                    "Re-login failed: %s",
+                    login_response.get("msg", "Unknown error"),
+                )
+                return False
+            except Exception as err:
+                _LOGGER.error("Re-login exception: %s", err)
+                return False
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Asynchronously update data via library."""
         try:
             return await self.hass.async_add_executor_job(self._sync_update_data)
-        except json.decoder.JSONDecodeError as err:
+        except (json.decoder.JSONDecodeError, RequestException) as err:
+            # JSONDecodeError: session expired — server returned HTML login page
+            # RequestException: network/HTTP error, possibly session-related
+            if self.api_version == "classic":
+                _LOGGER.warning(
+                    "Data fetch failed for %s (%s: %s), attempting re-login",
+                    self.device_id,
+                    type(err).__name__,
+                    err,
+                )
+                if await self._async_re_login():
+                    try:
+                        return await self.hass.async_add_executor_job(
+                            self._sync_update_data
+                        )
+                    except Exception as retry_err:
+                        raise UpdateFailed(
+                            f"Data fetch failed after re-login: {retry_err}"
+                        ) from retry_err
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
     def get_currency(self):

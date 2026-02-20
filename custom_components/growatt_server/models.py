@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,3 +19,5 @@ class GrowattRuntimeData:
     api: growattServer.GrowattApi | growattServer.OpenApiV1
     total_coordinator: GrowattCoordinator
     devices: dict[str, GrowattCoordinator]
+    login_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    last_login_time: float | None = None
