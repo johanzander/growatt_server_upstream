@@ -73,15 +73,17 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_battery_discharge_w",
         translation_key="mix_battery_discharge_w",
-        api_key="bdc1DischargePower",
+        api_key="pdischarge1",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    # TODO: remove coordinator W→kW conversion once growattServer normalises
+    # SPH discharge power units (no native kW field in V1 API).
     GrowattSensorEntityDescription(
         key="mix_battery_discharge_kw",
         translation_key="mix_battery_discharge_kw",
-        api_key="bdc1DischargePowerKW",  # synthetic kW field created in coordinator
+        api_key="pdischarge1KW",  # synthetic kW field created in coordinator
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -108,24 +110,24 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_wattage_pv_1",
         translation_key="mix_wattage_pv_1",
-        api_key="ppv1",  # converted W→kW in coordinator
-        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        api_key="ppv1",
+        native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     GrowattSensorEntityDescription(
         key="mix_wattage_pv_2",
         translation_key="mix_wattage_pv_2",
-        api_key="ppv2",  # converted W→kW in coordinator
-        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        api_key="ppv2",
+        native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     GrowattSensorEntityDescription(
         key="mix_wattage_pv_all",
         translation_key="mix_wattage_pv_all",
-        api_key="ppv",  # converted W→kW in coordinator
-        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        api_key="ppv",
+        native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),

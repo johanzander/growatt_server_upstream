@@ -118,15 +118,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             combined = {**sph_detail, **sph_energy}
 
-            # The V1 API returns PV power values in W; convert to kW to match
-            # the units used by Classic API mix sensors (for Energy Dashboard compat).
-            for field in ("ppv1", "ppv2", "ppv"):
-                if field in combined:
-                    combined[field] = combined[field] / 1000
-
-            # Create a kW version of discharge power for the mix_battery_discharge_kw sensor.
-            if "bdc1DischargePower" in combined:
-                combined["bdc1DischargePowerKW"] = combined["bdc1DischargePower"] / 1000
+            # TODO: remove coordinator W→kW conversion once growattServer normalises
+            # SPH discharge power units (pdischarge1 is in W; no native kW field in V1 API).
+            if "pdischarge1" in combined:
+                combined["pdischarge1KW"] = combined["pdischarge1"] / 1000
 
             # Parse last update timestamp from sph_energy "time" field
             time_str = sph_energy.get("time")

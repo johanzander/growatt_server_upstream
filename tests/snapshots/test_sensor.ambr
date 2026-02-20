@@ -13552,7 +13552,7 @@
     'name': None,
     'options': dict({
       'sensor': dict({
-        'suggested_display_precision': 2,
+        'suggested_display_precision': 0,
       }),
     }),
     'original_device_class': <SensorDeviceClass.POWER: 'power'>,
@@ -13564,7 +13564,7 @@
     'supported_features': 0,
     'translation_key': 'mix_wattage_pv_all',
     'unique_id': 'SPH123456-mix_wattage_pv_all',
-    'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+    'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_all_pv_wattage-state]
@@ -13574,14 +13574,14 @@
       'friendly_name': 'SPH123456 All PV wattage',
       'icon': 'mdi:solar-power',
       'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
-      'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+      'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
     }),
     'context': <ANY>,
     'entity_id': 'sensor.sph123456_all_pv_wattage',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
-    'state': '2.1',
+    'state': '2100',
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_battery_charged_today-entry]
@@ -13753,63 +13753,6 @@
     'last_reported': <ANY>,
     'last_updated': <ANY>,
     'state': '4.1',
-  })
-# ---
-# name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharging_kw-entry]
-  EntityRegistryEntrySnapshot({
-    'aliases': set({
-    }),
-    'area_id': None,
-    'capabilities': dict({
-      'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
-    }),
-    'config_entry_id': <ANY>,
-    'config_subentry_id': <ANY>,
-    'device_class': None,
-    'device_id': <ANY>,
-    'disabled_by': None,
-    'domain': 'sensor',
-    'entity_category': None,
-    'entity_id': 'sensor.sph123456_battery_discharging_kw',
-    'has_entity_name': True,
-    'hidden_by': None,
-    'icon': None,
-    'id': <ANY>,
-    'labels': set({
-    }),
-    'name': None,
-    'options': dict({
-      'sensor': dict({
-        'suggested_display_precision': 2,
-      }),
-    }),
-    'original_device_class': <SensorDeviceClass.POWER: 'power'>,
-    'original_icon': 'mdi:solar-power',
-    'original_name': 'Battery discharging kW',
-    'platform': 'growatt_server',
-    'previous_unique_id': None,
-    'suggested_object_id': None,
-    'supported_features': 0,
-    'translation_key': 'mix_battery_discharge_kw',
-    'unique_id': 'SPH123456-mix_battery_discharge_kw',
-    'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
-  })
-# ---
-# name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharging_kw-state]
-  StateSnapshot({
-    'attributes': ReadOnlyDict({
-      'device_class': 'power',
-      'friendly_name': 'SPH123456 Battery discharging kW',
-      'icon': 'mdi:solar-power',
-      'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
-      'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
-    }),
-    'context': <ANY>,
-    'entity_id': 'sensor.sph123456_battery_discharging_kw',
-    'last_changed': <ANY>,
-    'last_reported': <ANY>,
-    'last_updated': <ANY>,
-    'state': '1.5',
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharging_w-entry]
@@ -14448,7 +14391,7 @@
     'name': None,
     'options': dict({
       'sensor': dict({
-        'suggested_display_precision': 2,
+        'suggested_display_precision': 0,
       }),
     }),
     'original_device_class': <SensorDeviceClass.POWER: 'power'>,
@@ -14460,7 +14403,7 @@
     'supported_features': 0,
     'translation_key': 'mix_wattage_pv_1',
     'unique_id': 'SPH123456-mix_wattage_pv_1',
-    'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+    'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_pv1_wattage-state]
@@ -14470,14 +14413,14 @@
       'friendly_name': 'SPH123456 PV1 wattage',
       'icon': 'mdi:solar-power',
       'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
-      'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+      'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
     }),
     'context': <ANY>,
     'entity_id': 'sensor.sph123456_pv1_wattage',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
-    'state': '1.2',
+    'state': '1200',
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_pv2_voltage-entry]
@@ -14559,7 +14502,7 @@
     'name': None,
     'options': dict({
       'sensor': dict({
-        'suggested_display_precision': 2,
+        'suggested_display_precision': 0,
       }),
     }),
     'original_device_class': <SensorDeviceClass.POWER: 'power'>,
@@ -14571,7 +14514,7 @@
     'supported_features': 0,
     'translation_key': 'mix_wattage_pv_2',
     'unique_id': 'SPH123456-mix_wattage_pv_2',
-    'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+    'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_pv2_wattage-state]
@@ -14581,14 +14524,14 @@
       'friendly_name': 'SPH123456 PV2 wattage',
       'icon': 'mdi:solar-power',
       'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
-      'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+      'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
     }),
     'context': <ANY>,
     'entity_id': 'sensor.sph123456_pv2_wattage',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
-    'state': '0.9',
+    'state': '900',
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_self_consumption_today_solar_battery-entry]
