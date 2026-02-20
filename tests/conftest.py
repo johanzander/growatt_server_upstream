@@ -155,6 +155,7 @@ def mock_growatt_v1_api():
         # Called by SPH device coordinator during refresh
         mock_v1_api.sph_detail.return_value = {
             "deviceSn": "SPH123456",
+            # Control/settings fields (used by switch/number/service entities)
             "acChargeEnable": 1,
             "chargePowerCommand": 60,
             "wchargeSOCLowLimit": 20,
@@ -178,12 +179,37 @@ def mock_growatt_v1_api():
             "forcedDischargeTimeStart3": "00:00",
             "forcedDischargeTimeStop3": "00:00",
             "forcedDischargeStopSwitch3": 0,
+            # Sensor/measurement fields
+            "bmsSOC": 75,
+            "vbat": 53.2,
+            "vpv1": 380.5,
+            "vpv2": 365.2,
+            "vac1": 230.8,
+            "fac": 50.01,
+            "bdc1ChargePower": 2.5,
+            "bdc1DischargePower": 1500,
+            "pacToGridTotal": 1.2,
+            "pacToUserR": 0.8,
+            "temp1": 35.0,
+            "temp2": 37.5,
+            "temp3": 32.0,
+            "temp4": 28.5,
+            "temp5": 40.0,
         }
         mock_v1_api.sph_energy.return_value = {
-            "eChargeToday": 3.5,
-            "eChargeTotal": 80.2,
-            "eDischargeToday": 4.1,
-            "eDischargeTotal": 95.6,
+            "echarge1Today": 3.5,
+            "echarge1Total": 80.2,
+            "edischarge1Today": 4.1,
+            "edischarge1Total": 95.6,
+            "epvtoday": 8.7,
+            "epvTotal": 220.4,
+            "ppv1": 1200,
+            "ppv2": 900,
+            "ppv": 2100,
+            "esystemtoday": 10.2,
+            "eselfToday": 7.5,
+            "etoUserToday": 2.4,
+            "time": "2023-10-21 10:30:00",
         }
 
         # Called by SPH switch/number entities and AC charge/discharge time services

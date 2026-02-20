@@ -37,6 +37,25 @@ async def test_min_sensors_v1_api(
     await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
 
 
+@pytest.mark.freeze_time("2023-10-21")
+async def test_sph_sensors_v1_api(
+    hass: HomeAssistant,
+    snapshot: SnapshotAssertion,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Test SPH device sensor entities with V1 API."""
+    mock_growatt_v1_api.device_list.return_value = {
+        "devices": [{"device_sn": "SPH123456", "type": 5}]
+    }
+
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
+
+
 @pytest.mark.parametrize(
     ("device_type", "device_sn"),
     [
