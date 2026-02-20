@@ -38,9 +38,6 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-# Device types supported by the Open API V1 (type id → deviceType string)
-V1_DEVICE_TYPES: dict[int, str] = {5: "sph", 7: "min"}
-
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Growatt Server component."""
@@ -245,17 +242,18 @@ def get_device_list_v1(
             f"API error during device list: {e} (Code: {getattr(e, 'error_code', None)}, Message: {getattr(e, 'error_msg', None)})"
         ) from e
     devices = devices_dict.get("devices", [])
+    # Only MIN device (type = 7) support implemented in current V1 API
     supported_devices = [
         {
             "deviceSn": device.get("device_sn", ""),
-            "deviceType": V1_DEVICE_TYPES[device.get("type")],
+            "deviceType": "min",
         }
         for device in devices
-        if device.get("type") in V1_DEVICE_TYPES
+        if device.get("type") == 7
     ]
 
     for device in devices:
-        if device.get("type") not in V1_DEVICE_TYPES:
+        if device.get("type") != 7:
             _LOGGER.warning(
                 "Device %s with type %s not supported in Open API V1, skipping",
                 device.get("device_sn", ""),
@@ -318,7 +316,7 @@ async def _setup_coordinators_and_platforms(
             plant_id,
         )
         for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
+        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min"]
     }
 
     # Perform first refresh
@@ -547,7 +545,7 @@ async def async_setup_entry(
             plant_id,
         )
         for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
+        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min"]
     }
 
     # Update runtime_data with coordinators

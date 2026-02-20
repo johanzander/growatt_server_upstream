@@ -152,49 +152,6 @@ def mock_growatt_v1_api():
             }
         )
 
-        # Called by SPH device coordinator during refresh
-        mock_v1_api.sph_detail.return_value = {
-            "deviceSn": "SPH123456",
-            "acChargeEnable": 1,
-            "chargePowerCommand": 60,
-            "wchargeSOCLowLimit": 20,
-            "disChargePowerCommand": 70,
-            "wdisChargeSOCLowLimit": 15,
-            "forcedChargeTimeStart1": "06:00",
-            "forcedChargeTimeStop1": "08:00",
-            "forcedChargeStopSwitch1": 1,
-            "forcedChargeTimeStart2": "00:00",
-            "forcedChargeTimeStop2": "00:00",
-            "forcedChargeStopSwitch2": 0,
-            "forcedChargeTimeStart3": "00:00",
-            "forcedChargeTimeStop3": "00:00",
-            "forcedChargeStopSwitch3": 0,
-            "forcedDischargeTimeStart1": "18:00",
-            "forcedDischargeTimeStop1": "22:00",
-            "forcedDischargeStopSwitch1": 1,
-            "forcedDischargeTimeStart2": "00:00",
-            "forcedDischargeTimeStop2": "00:00",
-            "forcedDischargeStopSwitch2": 0,
-            "forcedDischargeTimeStart3": "00:00",
-            "forcedDischargeTimeStop3": "00:00",
-            "forcedDischargeStopSwitch3": 0,
-        }
-        mock_v1_api.sph_energy.return_value = {
-            "eChargeToday": 3.5,
-            "eChargeTotal": 80.2,
-            "eDischargeToday": 4.1,
-            "eDischargeTotal": 95.6,
-        }
-
-        # Called by SPH switch/number entities and AC charge/discharge time services
-        mock_v1_api.sph_write_parameter = Mock(return_value=None)
-        mock_v1_api.sph_write_ac_charge_times = Mock(
-            return_value={"error_code": 0, "error_msg": "Success"}
-        )
-        mock_v1_api.sph_write_ac_discharge_times = Mock(
-            return_value={"error_code": 0, "error_msg": "Success"}
-        )
-
         yield mock_v1_api
 
 
@@ -330,7 +287,6 @@ def mock_config_entry_classic_default_plant() -> MockConfigEntry:
             "name": "Test Plant",
         },
         unique_id="plant_default",
-        minor_version=0,  # triggers migration, where DEFAULT_PLANT_ID resolution now lives
     )
 
 

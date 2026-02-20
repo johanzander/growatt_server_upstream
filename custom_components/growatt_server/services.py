@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntryState
@@ -24,28 +24,44 @@ if TYPE_CHECKING:
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register services for Growatt Server integration."""
 
-    def get_coordinator(device_id: str, device_type: str) -> GrowattCoordinator:
-        """Get a V1 API coordinator for the given device type and device registry ID."""
-        coordinators: dict[str, GrowattCoordinator] = {}
+    def get_min_coordinators() -> dict[str, GrowattCoordinator]:
+        """Get all MIN coordinators with V1 API from loaded config entries."""
+        min_coordinators: dict[str, GrowattCoordinator] = {}
+
         for entry in hass.config_entries.async_entries(DOMAIN):
             if entry.state != ConfigEntryState.LOADED:
                 continue
-            for coord in entry.runtime_data.devices.values():
-                if coord.device_type == device_type and coord.api_version == "v1":
-                    coordinators[coord.device_id] = coord
 
-        if not coordinators:
+            # Add MIN coordinators from this entry
+            for coord in entry.runtime_data.devices.values():
+                if coord.device_type == "min" and coord.api_version == "v1":
+                    min_coordinators[coord.device_id] = coord
+
+        return min_coordinators
+
+    def get_coordinator(device_id: str) -> GrowattCoordinator:
+        """Get coordinator by device_id.
+
+        Args:
+            device_id: Device registry ID (not serial number)
+        """
+        # Get current coordinators (they may have changed since service registration)
+        min_coordinators = get_min_coordinators()
+
+        if not min_coordinators:
             raise ServiceValidationError(
-                f"No {device_type.upper()} devices with token authentication are configured. "
-                f"Services require {device_type.upper()} devices with V1 API access."
+                "No MIN devices with token authentication are configured. "
+                "Services require MIN devices with V1 API access."
             )
 
+        # Device registry ID provided - map to serial number
         device_registry = dr.async_get(hass)
         device_entry = device_registry.async_get(device_id)
 
         if not device_entry:
             raise ServiceValidationError(f"Device '{device_id}' not found")
 
+        # Extract serial number from device identifiers
         serial_number = None
         for identifier in device_entry.identifiers:
             if identifier[0] == DOMAIN:
@@ -57,12 +73,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 f"Device '{device_id}' is not a Growatt device"
             )
 
-        if serial_number not in coordinators:
+        # Find coordinator by serial number
+        if serial_number not in min_coordinators:
             raise ServiceValidationError(
-                f"Device '{serial_number}' is not configured as a {device_type.upper()} device"
+                f"MIN device '{serial_number}' not found or not configured for services"
             )
 
-        return coordinators[serial_number]
+        return min_coordinators[serial_number]
 
     async def handle_update_time_segment(call: ServiceCall) -> None:
         """Handle update_time_segment service call."""
@@ -114,7 +131,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             ) from err
 
         # Get the appropriate MIN coordinator
-        coordinator: GrowattCoordinator = get_coordinator(device_id, "min")
+        coordinator: GrowattCoordinator = get_coordinator(device_id)
 
         await coordinator.update_time_segment(
             segment_id,
@@ -129,91 +146,11 @@ async def async_register_services(hass: HomeAssistant) -> None:
         device_id: str = call.data["device_id"]
 
         # Get the appropriate MIN coordinator
-        coordinator: GrowattCoordinator = get_coordinator(device_id, "min")
+        coordinator: GrowattCoordinator = get_coordinator(device_id)
 
         time_segments: list[dict[str, Any]] = await coordinator.read_time_segments()
 
         return {"time_segments": time_segments}
-
-    def _parse_time_str(time_str: str, field_name: str) -> time:
-        """Parse a time string (HH:MM or HH:MM:SS) to a datetime.time object."""
-        try:
-            parts = time_str.split(":")
-            hhmm = f"{parts[0]}:{parts[1]}"
-            return datetime.strptime(hhmm, "%H:%M").time()
-        except (ValueError, IndexError) as err:
-            raise ServiceValidationError(
-                f"{field_name} must be in HH:MM or HH:MM:SS format"
-            ) from err
-
-    async def handle_write_ac_charge_times(call: ServiceCall) -> None:
-        """Handle write_ac_charge_times service call."""
-        device_id: str = call.data["device_id"]
-        charge_power: int = int(call.data["charge_power"])
-        charge_stop_soc: int = int(call.data["charge_stop_soc"])
-        mains_enabled: bool = call.data["mains_enabled"]
-
-        if not 0 <= charge_power <= 100:
-            raise ServiceValidationError(
-                f"charge_power must be between 0 and 100, got {charge_power}"
-            )
-        if not 0 <= charge_stop_soc <= 100:
-            raise ServiceValidationError(
-                f"charge_stop_soc must be between 0 and 100, got {charge_stop_soc}"
-            )
-
-        periods = []
-        for i in range(1, 4):
-            start = _parse_time_str(call.data[f"period_{i}_start"], f"period_{i}_start")
-            end = _parse_time_str(call.data[f"period_{i}_end"], f"period_{i}_end")
-            enabled: bool = call.data[f"period_{i}_enabled"]
-            periods.append({"start_time": start, "end_time": end, "enabled": enabled})
-
-        coordinator: GrowattCoordinator = get_coordinator(device_id, "sph")
-        await coordinator.update_ac_charge_times(
-            charge_power, charge_stop_soc, mains_enabled, periods
-        )
-
-    async def handle_write_ac_discharge_times(call: ServiceCall) -> None:
-        """Handle write_ac_discharge_times service call."""
-        device_id: str = call.data["device_id"]
-        discharge_power: int = int(call.data["discharge_power"])
-        discharge_stop_soc: int = int(call.data["discharge_stop_soc"])
-
-        if not 0 <= discharge_power <= 100:
-            raise ServiceValidationError(
-                f"discharge_power must be between 0 and 100, got {discharge_power}"
-            )
-        if not 0 <= discharge_stop_soc <= 100:
-            raise ServiceValidationError(
-                f"discharge_stop_soc must be between 0 and 100, got {discharge_stop_soc}"
-            )
-
-        periods = []
-        for i in range(1, 4):
-            start = _parse_time_str(
-                call.data[f"period_{i}_start"], f"period_{i}_start"
-            )
-            end = _parse_time_str(call.data[f"period_{i}_end"], f"period_{i}_end")
-            enabled: bool = call.data[f"period_{i}_enabled"]
-            periods.append({"start_time": start, "end_time": end, "enabled": enabled})
-
-        coordinator: GrowattCoordinator = get_coordinator(device_id, "sph")
-        await coordinator.update_ac_discharge_times(
-            discharge_power, discharge_stop_soc, periods
-        )
-
-    async def handle_read_ac_charge_times(call: ServiceCall) -> dict[str, Any]:
-        """Handle read_ac_charge_times service call."""
-        device_id: str = call.data["device_id"]
-        coordinator: GrowattCoordinator = get_coordinator(device_id, "sph")
-        return await coordinator.read_ac_charge_times()
-
-    async def handle_read_ac_discharge_times(call: ServiceCall) -> dict[str, Any]:
-        """Handle read_ac_discharge_times service call."""
-        device_id: str = call.data["device_id"]
-        coordinator: GrowattCoordinator = get_coordinator(device_id, "sph")
-        return await coordinator.read_ac_discharge_times()
 
     # Register services without schema - services.yaml will provide UI definition
     # Schema validation happens in the handler functions
@@ -228,33 +165,5 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "read_time_segments",
         handle_read_time_segments,
-        supports_response=SupportsResponse.ONLY,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        "write_ac_charge_times",
-        handle_write_ac_charge_times,
-        supports_response=SupportsResponse.NONE,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        "write_ac_discharge_times",
-        handle_write_ac_discharge_times,
-        supports_response=SupportsResponse.NONE,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        "read_ac_charge_times",
-        handle_read_ac_charge_times,
-        supports_response=SupportsResponse.ONLY,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        "read_ac_discharge_times",
-        handle_read_ac_discharge_times,
         supports_response=SupportsResponse.ONLY,
     )
