@@ -11,12 +11,8 @@ This repository serves as an **upstream testing ground** for improvements to the
 
 ## Features
 
-**Current Version**: v2.3.0
+**Current Version**: v2.2.0
 **Base Version**: Home Assistant Core 2026.2 Growatt Server integration
-
-## What's New in v2.3.0
-
-- **SPH sensor entities**: 28 dedicated sensor entities for SPH devices with correct V1 API field names — battery SOC, voltages, power, energy totals, temperatures, and a last-update timestamp. Previously SPH was mapped to MIX sensor definitions which caused most sensors to silently return `None`.
 
 ## What's New in v2.2.0
 

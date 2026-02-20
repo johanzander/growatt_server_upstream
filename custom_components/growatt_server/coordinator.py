@@ -116,24 +116,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except growattServer.GrowattV1ApiError as err:
                 raise UpdateFailed(f"Error fetching SPH device data: {err}") from err
 
-            combined = {**sph_detail, **sph_energy}
-
-            # Parse last update timestamp from sph_energy "time" field
-            time_str = sph_energy.get("time")
-            if time_str:
-                try:
-                    parsed = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                    combined["lastdataupdate"] = parsed.replace(
-                        tzinfo=dt_util.get_default_time_zone()
-                    )
-                except (ValueError, TypeError):
-                    _LOGGER.debug(
-                        "Could not parse SPH time field for %s: %r",
-                        self.device_id,
-                        time_str,
-                    )
-
-            self.data = combined
+            self.data = {**sph_detail, **sph_energy}
             _LOGGER.debug("sph_info for device %s: %r", self.device_id, self.data)
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
