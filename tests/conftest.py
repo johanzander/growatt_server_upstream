@@ -43,11 +43,18 @@ def mock_growatt_v1_api():
     - min_settings: Provides settings (e.g. TOU periods)
     - min_energy: Provides energy data (empty for switch/number tests, sensors need real data)
 
+    Methods mocked for SPH device coordinator refresh:
+    - sph_detail: Provides device state (similar to min_detail)
+    - sph_energy: Provides energy data (similar to min_energy)
+
     Methods mocked for switch and number operations:
-    - min_write_parameter: Called by switch/number entities to change settings
+    - min_write_parameter: Called by switch/number entities to change MIN settings
+    - sph_write_parameter: Called by switch/number entities to change SPH settings
 
     Methods mocked for service operations:
-    - min_write_time_segment: Called by time segment management services
+    - min_write_time_segment: Called by time segment management services for MIN
+    - sph_write_ac_charge_times: Called by time segment services for SPH charge mode
+    - sph_write_ac_discharge_times: Called by time segment services for SPH discharge modes
     """
     with patch(
         "homeassistant.components.growatt_server.config_flow.growattServer.OpenApiV1",
@@ -142,6 +149,7 @@ def mock_growatt_v1_api():
 
         # Called by switch/number entities during turn_on/turn_off/set_value
         mock_v1_api.min_write_parameter.return_value = None
+        mock_v1_api.sph_write_parameter.return_value = None
 
         # Called by time segment management services
         # Note: Don't use autospec for this method as it needs to accept variable arguments
@@ -151,6 +159,80 @@ def mock_growatt_v1_api():
                 "error_msg": "Success",
             }
         )
+        # SPH uses separate methods for charge and discharge times
+        mock_v1_api.sph_write_ac_charge_times = Mock(
+            return_value={
+                "error_code": 0,
+                "error_msg": "Success",
+            }
+        )
+        mock_v1_api.sph_write_ac_discharge_times = Mock(
+            return_value={
+                "error_code": 0,
+                "error_msg": "Success",
+            }
+        )
+
+        # Called by SPH device coordinator during refresh
+        # Provide similar data structure to MIN but for SPH devices
+        mock_v1_api.sph_detail.return_value = {
+            "deviceSn": "SPH123456",
+            "acChargeEnable": 1,  # AC charge enabled - read by switch entity
+            "chargePowerCommand": 50,  # 50% charge power - read by number entity
+            "wchargeSOCLowLimit": 10,  # 10% charge stop SOC - read by number entity
+            "disChargePowerCommand": 80,  # 80% discharge power - read by number entity
+            "wdisChargeSOCLowLimit": 20,  # 20% discharge stop SOC - read by number entity
+            # Include time segment settings directly in sph_detail (SPH doesn't have separate settings API)
+            "forcedTimeStart1": "06:00",
+            "forcedTimeStop1": "08:00",
+            "time1Mode": 1,
+            "forcedStopSwitch1": 1,
+            "forcedTimeStart2": "22:00",
+            "forcedTimeStop2": "24:00",
+            "time2Mode": 0,
+            "forcedStopSwitch2": 0,
+            "forcedTimeStart3": "00:00",
+            "forcedTimeStop3": "00:00",
+            "time3Mode": 1,
+            "forcedStopSwitch3": 0,
+            "forcedTimeStart4": "00:00",
+            "forcedTimeStop4": "00:00",
+            "time4Mode": 1,
+            "forcedStopSwitch4": 0,
+            "forcedTimeStart5": "00:00",
+            "forcedTimeStop5": "00:00",
+            "time5Mode": 1,
+            "forcedStopSwitch5": 0,
+            "forcedTimeStart6": "00:00",
+            "forcedTimeStop6": "00:00",
+            "time6Mode": 1,
+            "forcedStopSwitch6": 0,
+            "forcedTimeStart7": "00:00",
+            "forcedTimeStop7": "00:00",
+            "time7Mode": 1,
+            "forcedStopSwitch7": 0,
+            "forcedTimeStart8": "00:00",
+            "forcedTimeStop8": "00:00",
+            "time8Mode": 1,
+            "forcedStopSwitch8": 0,
+            "forcedTimeStart9": "00:00",
+            "forcedTimeStop9": "00:00",
+            "time9Mode": 1,
+            "forcedStopSwitch9": 0,
+        }
+
+        mock_v1_api.sph_energy.return_value = {
+            "eChargeToday": 5.2,
+            "eChargeTotal": 125.8,
+            "eDischargeToday": 8.1,
+            "eDischargeTotal": 245.6,
+            "eSelfToday": 12.5,
+            "eSelfTotal": 320.4,
+            "eBatChargeToday": 6.3,
+            "eBatChargeTotal": 150.2,
+            "eBatDischargeToday": 7.8,
+            "eBatDischargeTotal": 180.5,
+        }
 
         yield mock_v1_api
 
@@ -335,17 +417,21 @@ def mock_throttle_manager(request):
     if "no_throttle_mock" in request.keywords:
         yield None
         return
-        
-    with patch(
-        "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
-        return_value=False,  # Never throttle during tests
-    ), patch(
-        "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
-    ) as mock_throttled_call:
+
+    with (
+        patch(
+            "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
+            return_value=False,  # Never throttle during tests
+        ),
+        patch(
+            "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
+        ) as mock_throttled_call,
+    ):
         # Make throttled_call pass through to the actual function
         async def passthrough_call(func, *args, **kwargs):
             """Execute the function without throttling."""
             import asyncio
+
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
             return func(*args, **kwargs)

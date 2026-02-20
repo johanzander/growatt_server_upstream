@@ -24,20 +24,20 @@ if TYPE_CHECKING:
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register services for Growatt Server integration."""
 
-    def get_min_coordinators() -> dict[str, GrowattCoordinator]:
-        """Get all MIN coordinators with V1 API from loaded config entries."""
-        min_coordinators: dict[str, GrowattCoordinator] = {}
+    def get_battery_coordinators() -> dict[str, GrowattCoordinator]:
+        """Get all battery device coordinators (MIN/SPH) with V1 API from loaded config entries."""
+        battery_coordinators: dict[str, GrowattCoordinator] = {}
 
         for entry in hass.config_entries.async_entries(DOMAIN):
             if entry.state != ConfigEntryState.LOADED:
                 continue
 
-            # Add MIN coordinators from this entry
+            # Add MIN and SPH coordinators from this entry
             for coord in entry.runtime_data.devices.values():
-                if coord.device_type == "min" and coord.api_version == "v1":
-                    min_coordinators[coord.device_id] = coord
+                if coord.device_type in ("min", "sph") and coord.api_version == "v1":
+                    battery_coordinators[coord.device_id] = coord
 
-        return min_coordinators
+        return battery_coordinators
 
     def get_coordinator(device_id: str) -> GrowattCoordinator:
         """Get coordinator by device_id.
@@ -46,12 +46,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
             device_id: Device registry ID (not serial number)
         """
         # Get current coordinators (they may have changed since service registration)
-        min_coordinators = get_min_coordinators()
+        battery_coordinators = get_battery_coordinators()
 
-        if not min_coordinators:
+        if not battery_coordinators:
             raise ServiceValidationError(
-                "No MIN devices with token authentication are configured. "
-                "Services require MIN devices with V1 API access."
+                "No battery devices (MIN/SPH) with token authentication are configured. "
+                "Services require MIN or SPH devices with V1 API access."
             )
 
         # Device registry ID provided - map to serial number
@@ -74,12 +74,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
 
         # Find coordinator by serial number
-        if serial_number not in min_coordinators:
+        if serial_number not in battery_coordinators:
             raise ServiceValidationError(
-                f"MIN device '{serial_number}' not found or not configured for services"
+                f"Battery device '{serial_number}' not found or not configured for services"
             )
 
-        return min_coordinators[serial_number]
+        return battery_coordinators[serial_number]
 
     async def handle_update_time_segment(call: ServiceCall) -> None:
         """Handle update_time_segment service call."""
@@ -130,7 +130,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 "end_time must be in HH:MM or HH:MM:SS format"
             ) from err
 
-        # Get the appropriate MIN coordinator
+        # Get the appropriate battery device coordinator (MIN or SPH)
         coordinator: GrowattCoordinator = get_coordinator(device_id)
 
         await coordinator.update_time_segment(
@@ -145,7 +145,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         """Handle read_time_segments service call."""
         device_id: str = call.data["device_id"]
 
-        # Get the appropriate MIN coordinator
+        # Get the appropriate battery device coordinator (MIN or SPH)
         coordinator: GrowattCoordinator = get_coordinator(device_id)
 
         time_segments: list[dict[str, Any]] = await coordinator.read_time_segments()

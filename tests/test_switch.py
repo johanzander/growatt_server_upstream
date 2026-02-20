@@ -23,7 +23,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, snapshot_platform
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+    snapshot_platform,
+)
 
 DOMAIN = "growatt_server"
 
@@ -100,7 +104,6 @@ async def test_switch_service_call_api_error(
         )
 
 
-
 async def test_switch_state_handling_integer_values(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
@@ -135,7 +138,6 @@ async def test_switch_state_handling_integer_values(
     assert state.state == STATE_OFF
 
 
-
 async def test_switch_missing_data(
     hass: HomeAssistant,
     mock_growatt_v1_api,
@@ -159,15 +161,14 @@ async def test_switch_missing_data(
     assert state.state == STATE_UNKNOWN
 
 
-
 async def test_no_switch_entities_for_non_min_devices(
     hass: HomeAssistant,
     mock_growatt_v1_api,
     mock_config_entry: MockConfigEntry,
     entity_registry: er.EntityRegistry,
 ) -> None:
-    """Test that switch entities are not created for non-MIN devices."""
-    # Mock a different device type (not MIN) - type 7 is MIN, type 8 is non-MIN
+    """Test that switch entities are not created for non-battery devices."""
+    # Mock a different device type (not MIN/SPH) - type 7 is MIN, type 6 is SPH, type 8 is non-battery
     mock_growatt_v1_api.device_list.return_value = {
         "devices": [
             {
@@ -191,7 +192,6 @@ async def test_no_switch_entities_for_non_min_devices(
     )
     switch_entities = [entry for entry in entity_entries if entry.domain == "switch"]
     assert len(switch_entities) == 0
-
 
 
 async def test_no_switch_entities_for_classic_api(

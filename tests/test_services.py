@@ -251,8 +251,8 @@ async def test_no_min_devices_skips_service_registration(
     mock_growatt_classic_api,
     device_registry: dr.DeviceRegistry,
 ) -> None:
-    """Test that services fail gracefully when no MIN devices exist."""
-    # Only non-MIN devices (TLX with classic API)
+    """Test that services fail gracefully when no battery devices (MIN/SPH) exist."""
+    # Only non-battery devices (TLX with classic API)
     mock_growatt_classic_api.device_list.return_value = [
         {"deviceSn": "TLX123456", "deviceType": "tlx"}
     ]

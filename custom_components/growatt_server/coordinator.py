@@ -109,6 +109,34 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             min_info = {**min_details, **min_settings, **min_energy}
             self.data = min_info
             _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
+        elif self.device_type == "sph":
+            # Open API V1: sph device
+            try:
+                sph_details = self.api.sph_detail(self.device_id)
+                sph_energy = self.api.sph_energy(self.device_id)
+                sph_details["lastdataupdate"] = None
+
+                date_str = sph_energy.get("time")
+                date_format = "%Y-%m-%d %H:%M:%S"
+                tz = dt_util.get_default_time_zone()
+                if date_str is not None:
+                    naive_dt = datetime.datetime.strptime(date_str, date_format)
+                    aware_dt = naive_dt.replace(tzinfo=tz)
+                    sph_details["lastdataupdate"] = aware_dt
+
+
+                sph_energy["ppv1"] = sph_energy.get("ppv1", 0) / 1000  # W to kW
+                sph_energy["ppv2"] = sph_energy.get("ppv2", 0) / 1000  # W to kW
+                sph_energy["ppv"] = sph_energy.get("ppv", 0) / 1000  # W to kW
+                sph_energy["accdischargePowerKW"] = (
+                    sph_energy.get("accdischargePower", 0) / 1000
+                )
+            except growattServer.GrowattV1ApiError as err:
+                raise UpdateFailed(f"Error fetching sph device data: {err}") from err
+
+            sph_info = {**sph_details, **sph_energy}
+            self.data = sph_info
+            _LOGGER.debug("sph_info for device %s: %r", self.device_id, sph_info)
         elif self.device_type == "tlx":
             tlx_info = self.api.tlx_detail(self.device_id)
             self.data = tlx_info["data"]
@@ -174,11 +202,28 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Get the currency."""
         return self.data.get("currency")
 
+    def _get_matching_api_key(
+        self, variable: str | list[str] | tuple[str], key_list: dict[str, Any]
+    ) -> str | None:
+        """Get the matching api_key from the data."""
+        if isinstance(variable, str):
+            api_value = key_list.get(variable)
+            return variable
+        elif isinstance(variable, (list, tuple)):
+            # Try each key in the array until we find a match
+            for key in variable:
+                value = key_list.get(key)
+                if value is not None:
+                    api_value = value
+                    return key
+                    break
+
     def get_data(
         self, entity_description: GrowattSensorEntityDescription
     ) -> str | int | float | None:
         """Get the data."""
-        variable = entity_description.api_key
+        # Support entity_description.api_key being either str or list/tuple of str
+        variable = self._get_matching_api_key(entity_description.api_key, self.data)
         api_value = self.data.get(variable)
         previous_value = self.previous_values.get(variable)
         return_value = api_value
@@ -296,15 +341,42 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Use V1 API for token authentication
             # The library's _process_response will raise GrowattV1ApiError if error_code != 0
-            await self.hass.async_add_executor_job(
-                self.api.min_write_time_segment,
-                self.device_id,
-                segment_id,
-                batt_mode,
-                start_time,
-                end_time,
-                enabled,
-            )
+            if self.device_type == "min":
+                await self.hass.async_add_executor_job(
+                    self.api.min_write_time_segment,
+                    self.device_id,
+                    segment_id,
+                    batt_mode,
+                    start_time,
+                    end_time,
+                    enabled,
+                )
+            elif self.device_type == "sph":
+                # SPH uses different methods for charge vs discharge times
+                # BATT_MODE_BATTERY_FIRST (1) = charge mode
+                # BATT_MODE_LOAD_FIRST (0) and BATT_MODE_GRID_FIRST (2) = discharge modes
+                if batt_mode == BATT_MODE_BATTERY_FIRST:
+                    await self.hass.async_add_executor_job(
+                        self.api.sph_write_ac_charge_times,
+                        self.device_id,
+                        segment_id,
+                        start_time,
+                        end_time,
+                        enabled,
+                    )
+                else:
+                    await self.hass.async_add_executor_job(
+                        self.api.sph_write_ac_discharge_times,
+                        self.device_id,
+                        segment_id,
+                        start_time,
+                        end_time,
+                        enabled,
+                    )
+            else:
+                raise ServiceValidationError(
+                    f"Time segment updates not supported for device type: {self.device_type}"
+                )
         except growattServer.GrowattV1ApiError as err:
             raise HomeAssistantError(f"API error updating time segment: {err}") from err
 
