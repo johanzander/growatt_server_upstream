@@ -9,7 +9,6 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import growattServer
-from requests import RequestException
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -228,9 +227,8 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Asynchronously update data via library."""
         try:
             return await self.hass.async_add_executor_job(self._sync_update_data)
-        except (json.decoder.JSONDecodeError, RequestException) as err:
-            # JSONDecodeError: session expired — server returned HTML login page
-            # RequestException: network/HTTP error, possibly session-related
+        except json.decoder.JSONDecodeError as err:
+            # Session expired — server returned HTML login page instead of JSON
             if self.api_version == "classic":
                 _LOGGER.warning(
                     "Data fetch failed for %s (%s: %s), attempting re-login",
@@ -243,7 +241,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         return await self.hass.async_add_executor_job(
                             self._sync_update_data
                         )
-                    except Exception as retry_err:
+                    except json.decoder.JSONDecodeError as retry_err:
                         raise UpdateFailed(
                             f"Data fetch failed after re-login: {retry_err}"
                         ) from retry_err
