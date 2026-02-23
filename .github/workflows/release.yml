@@ -15,14 +15,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Get growattServer requirement
+        id: req
+        run: echo "ver=$(grep -oP 'growattServer==\K[0-9.]+' custom_components/growatt_server/manifest.json)" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          append_body: true
           body: |
             ## Installation
             - Install via HACS using this repository URL
             - Remove/disable standard Growatt Server integration first
             - Restart Home Assistant after installation
-            
+
             ## Requirements
-            - growattServer==1.7.1
+            - growattServer==${{ steps.req.outputs.ver }}
