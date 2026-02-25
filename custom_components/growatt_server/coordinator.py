@@ -35,7 +35,32 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator to manage Growatt data fetching."""
+    """Coordinator to manage Growatt data fetching.
+
+    Rate-limit / cache pattern
+    --------------------------
+    The Growatt cloud API enforces a per-endpoint rate limit of one call every
+    5 minutes.  SCAN_INTERVAL is configured to respect this limit, so
+    *service-action reads must never trigger an extra API call*.
+
+    Rule 1 – reads use the coordinator cache:
+        Service actions that return current settings (e.g. read_time_segments,
+        read_ac_charge_times, read_ac_discharge_times) parse their result from
+        self.data, not from a fresh API call.  If the cache is empty for some
+        reason they call async_refresh() once to populate it.
+
+    Rule 2 – writes update the coordinator cache immediately:
+        After a successful write (e.g. update_time_segment,
+        update_ac_charge_times, update_ac_discharge_times) the relevant fields
+        in self.data are updated in-place and async_set_updated_data() is called.
+        This keeps the cache consistent so that a subsequent read returns the
+        value just written, without waiting for the next poll.
+
+    Trade-off:
+        Because reads are served from the cache, settings changed outside of
+        Home Assistant (e.g. via the Growatt ShinePhone app or the Growatt web
+        portal) will not be reflected until the next scheduled poll.
+    """
 
     def __init__(
         self,
@@ -464,7 +489,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f"API error updating AC charge times: {err}"
             ) from err
 
-        # Update coordinator's cached data without an API call
+        # Update coordinator's cached data without making an API call (avoids rate limit)
         if self.data:
             self.data["chargePowerCommand"] = charge_power
             self.data["wchargeSOCLowLimit"] = charge_stop_soc
@@ -512,7 +537,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f"API error updating AC discharge times: {err}"
             ) from err
 
-        # Update coordinator's cached data without an API call
+        # Update coordinator's cached data without making an API call (avoids rate limit)
         if self.data:
             self.data["disChargePowerCommand"] = discharge_power
             self.data["wdisChargeSOCLowLimit"] = discharge_stop_soc
@@ -520,82 +545,35 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.data[f"forcedDischargeTimeStart{i}"] = period[
                     "start_time"
                 ].strftime("%H:%M")
-                self.data[f"forcedDischargeTimeStop{i}"] = period[
-                    "end_time"
-                ].strftime("%H:%M")
+                self.data[f"forcedDischargeTimeStop{i}"] = period["end_time"].strftime(
+                    "%H:%M"
+                )
                 self.data[f"forcedDischargeStopSwitch{i}"] = (
                     1 if period["enabled"] else 0
                 )
             self.async_set_updated_data(self.data)
 
     async def read_ac_charge_times(self) -> dict:
-        """Read AC charge time settings from cached SPH data.
+        """Read AC charge time settings from the coordinator cache.
 
         Returns:
             Dictionary with charge_power, charge_stop_soc, mains_enabled, and periods list
         """
         _LOGGER.debug("Reading AC charge times for device %s", self.device_id)
-
         if not self.data:
             await self.async_refresh()
-
-        periods = []
-        for i in range(1, 4):
-            start_raw = self.data.get(f"forcedChargeTimeStart{i}", "0:0")
-            end_raw = self.data.get(f"forcedChargeTimeStop{i}", "0:0")
-            enabled_raw = self.data.get(f"forcedChargeStopSwitch{i}", 0)
-            if start_raw in ("null", None, ""):
-                start_raw = "0:0"
-            if end_raw in ("null", None, ""):
-                end_raw = "0:0"
-            periods.append({
-                "period_id": i,
-                "start_time": self._format_time(str(start_raw)),
-                "end_time": self._format_time(str(end_raw)),
-                "enabled": bool(self._safe_int(enabled_raw, 0)),
-            })
-
-        return {
-            "charge_power": self._safe_int(self.data.get("chargePowerCommand"), 0),
-            "charge_stop_soc": self._safe_int(self.data.get("wchargeSOCLowLimit"), 100),
-            "mains_enabled": bool(self._safe_int(self.data.get("acChargeEnable", 0), 0)),
-            "periods": periods,
-        }
+        return self.api.sph_read_ac_charge_times(settings_data=self.data)
 
     async def read_ac_discharge_times(self) -> dict:
-        """Read AC discharge time settings from cached SPH data.
+        """Read AC discharge time settings from the coordinator cache.
 
         Returns:
             Dictionary with discharge_power, discharge_stop_soc, and periods list
         """
         _LOGGER.debug("Reading AC discharge times for device %s", self.device_id)
-
         if not self.data:
             await self.async_refresh()
-
-        periods = []
-        for i in range(1, 4):
-            start_raw = self.data.get(f"forcedDischargeTimeStart{i}", "0:0")
-            end_raw = self.data.get(f"forcedDischargeTimeStop{i}", "0:0")
-            enabled_raw = self.data.get(f"forcedDischargeStopSwitch{i}", 0)
-            if start_raw in ("null", None, ""):
-                start_raw = "0:0"
-            if end_raw in ("null", None, ""):
-                end_raw = "0:0"
-            periods.append({
-                "period_id": i,
-                "start_time": self._format_time(str(start_raw)),
-                "end_time": self._format_time(str(end_raw)),
-                "enabled": bool(self._safe_int(enabled_raw, 0)),
-            })
-
-        return {
-            "discharge_power": self._safe_int(self.data.get("disChargePowerCommand"), 0),
-            "discharge_stop_soc": self._safe_int(
-                self.data.get("wdisChargeSOCLowLimit"), 10
-            ),
-            "periods": periods,
-        }
+        return self.api.sph_read_ac_discharge_times(settings_data=self.data)
 
     def _format_time(self, time_raw: str) -> str:
         """Format time string to HH:MM format."""

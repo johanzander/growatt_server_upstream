@@ -88,12 +88,12 @@ async def async_setup_entry(
     """Set up Growatt number entities."""
     runtime_data = entry.runtime_data
 
-    # Add number entities for MIN and SPH devices (only supported with V1 API)
+    # Add number entities for each MIN device (only supported with V1 API)
     async_add_entities(
         GrowattNumber(device_coordinator, description)
         for device_coordinator in runtime_data.devices.values()
         if (
-            device_coordinator.device_type in ("min", "sph")
+            device_coordinator.device_type == "min"
             and device_coordinator.api_version == "v1"
         )
         for description in MIN_NUMBER_TYPES
@@ -139,22 +139,13 @@ class GrowattNumber(CoordinatorEntity[GrowattCoordinator], NumberEntity):
         int_value = int(value)
 
         try:
-            # SPH uses sph_write_parameter (mixSet endpoint), MIN uses min_write_parameter
-            # (tlxSet endpoint), but both share the same parameter_id naming convention.
-            if self.coordinator.device_type == "sph":
-                await self.hass.async_add_executor_job(
-                    self.coordinator.api.sph_write_parameter,
-                    self.coordinator.device_id,
-                    parameter_id,
-                    int_value,
-                )
-            else:
-                await self.hass.async_add_executor_job(
-                    self.coordinator.api.min_write_parameter,
-                    self.coordinator.device_id,
-                    parameter_id,
-                    int_value,
-                )
+            # Use V1 API to write parameter
+            await self.hass.async_add_executor_job(
+                self.coordinator.api.min_write_parameter,
+                self.coordinator.device_id,
+                parameter_id,
+                int_value,
+            )
         except GrowattV1ApiError as e:
             raise HomeAssistantError(f"Error while setting parameter: {e}") from e
 

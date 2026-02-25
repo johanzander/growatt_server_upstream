@@ -13666,7 +13666,7 @@
     'name': None,
     'options': dict({
       'sensor': dict({
-        'suggested_display_precision': 2,
+        'suggested_display_precision': 0,
       }),
     }),
     'original_device_class': <SensorDeviceClass.POWER: 'power'>,
@@ -13678,7 +13678,7 @@
     'supported_features': 0,
     'translation_key': 'mix_battery_charge',
     'unique_id': 'SPH123456-mix_battery_charge',
-    'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+    'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_battery_charging-state]
@@ -13688,14 +13688,14 @@
       'friendly_name': 'SPH123456 Battery charging',
       'icon': 'mdi:solar-power',
       'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
-      'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+      'unit_of_measurement': <UnitOfPower.WATT: 'W'>,
     }),
     'context': <ANY>,
     'entity_id': 'sensor.sph123456_battery_charging',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
-    'state': '2.5',
+    'state': '2500',
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharged_today-entry]
@@ -13753,6 +13753,63 @@
     'last_reported': <ANY>,
     'last_updated': <ANY>,
     'state': '4.1',
+  })
+# ---
+# name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharging_kw-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': set({
+    }),
+    'area_id': None,
+    'capabilities': dict({
+      'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'sensor',
+    'entity_category': None,
+    'entity_id': 'sensor.sph123456_battery_discharging_kw',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'options': dict({
+      'sensor': dict({
+        'suggested_display_precision': 2,
+      }),
+    }),
+    'original_device_class': <SensorDeviceClass.POWER: 'power'>,
+    'original_icon': 'mdi:solar-power',
+    'original_name': 'Battery discharging kW',
+    'platform': 'growatt_server',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': 'mix_battery_discharge_kw',
+    'unique_id': 'SPH123456-mix_battery_discharge_kw',
+    'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+  })
+# ---
+# name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharging_kw-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'device_class': 'power',
+      'friendly_name': 'SPH123456 Battery discharging kW',
+      'icon': 'mdi:solar-power',
+      'state_class': <SensorStateClass.MEASUREMENT: 'measurement'>,
+      'unit_of_measurement': <UnitOfPower.KILO_WATT: 'kW'>,
+    }),
+    'context': <ANY>,
+    'entity_id': 'sensor.sph123456_battery_discharging_kw',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': '1.5',
   })
 # ---
 # name: test_sph_sensors_v1_api[sensor.sph123456_battery_discharging_w-entry]

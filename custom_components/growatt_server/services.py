@@ -191,9 +191,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         periods = []
         for i in range(1, 4):
-            start = _parse_time_str(
-                call.data[f"period_{i}_start"], f"period_{i}_start"
-            )
+            start = _parse_time_str(call.data[f"period_{i}_start"], f"period_{i}_start")
             end = _parse_time_str(call.data[f"period_{i}_end"], f"period_{i}_end")
             enabled: bool = call.data[f"period_{i}_enabled"]
             periods.append({"start_time": start, "end_time": end, "enabled": enabled})

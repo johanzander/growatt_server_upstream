@@ -186,8 +186,8 @@ def mock_growatt_v1_api():
             "vpv2": 365.2,
             "vac1": 230.8,
             "fac": 50.01,
-            "bdc1ChargePower": 2.5,
-            "bdc1DischargePower": 1500,
+            "pcharge1": 2500,
+            "pdischarge1": 1500,
             "pacToGridTotal": 1.2,
             "pacToUserR": 0.8,
             "temp1": 35.0,
@@ -219,6 +219,59 @@ def mock_growatt_v1_api():
         )
         mock_v1_api.sph_write_ac_discharge_times = Mock(
             return_value={"error_code": 0, "error_msg": "Success"}
+        )
+        mock_v1_api.sph_read_ac_charge_times = Mock(
+            return_value={
+                "charge_power": 60,
+                "charge_stop_soc": 20,
+                "mains_enabled": True,
+                "periods": [
+                    {
+                        "period_id": 1,
+                        "start_time": "06:00",
+                        "end_time": "08:00",
+                        "enabled": True,
+                    },
+                    {
+                        "period_id": 2,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                    {
+                        "period_id": 3,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                ],
+            }
+        )
+        mock_v1_api.sph_read_ac_discharge_times = Mock(
+            return_value={
+                "discharge_power": 70,
+                "discharge_stop_soc": 15,
+                "periods": [
+                    {
+                        "period_id": 1,
+                        "start_time": "18:00",
+                        "end_time": "22:00",
+                        "enabled": True,
+                    },
+                    {
+                        "period_id": 2,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                    {
+                        "period_id": 3,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                ],
+            }
         )
 
         yield mock_v1_api
@@ -404,17 +457,21 @@ def mock_throttle_manager(request):
     if "no_throttle_mock" in request.keywords:
         yield None
         return
-        
-    with patch(
-        "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
-        return_value=False,  # Never throttle during tests
-    ), patch(
-        "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
-    ) as mock_throttled_call:
+
+    with (
+        patch(
+            "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
+            return_value=False,  # Never throttle during tests
+        ),
+        patch(
+            "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
+        ) as mock_throttled_call,
+    ):
         # Make throttled_call pass through to the actual function
         async def passthrough_call(func, *args, **kwargs):
             """Execute the function without throttling."""
             import asyncio
+
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
             return func(*args, **kwargs)

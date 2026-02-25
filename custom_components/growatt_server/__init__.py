@@ -14,7 +14,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import dt as dt_util
 
 from .const import (
     AUTH_API_TOKEN,
@@ -32,7 +31,6 @@ from .const import (
 from .coordinator import GrowattConfigEntry, GrowattCoordinator
 from .models import GrowattRuntimeData
 from .services import async_register_services
-from .throttle import API_THROTTLE_MINUTES, init_throttle_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -286,7 +284,7 @@ async def _setup_coordinators_and_platforms(
 ) -> None:
     """Set up coordinators and platforms (common logic for immediate and delayed setup)."""
     config = config_entry.data
-    
+
     # Get device list (with throttling for Classic API)
     if api_version == "classic":
         devices, plant_id = await throttle_manager.throttled_call(
@@ -389,7 +387,7 @@ async def _handle_throttled_setup(
     async def delayed_setup():
         """Wait for throttle period and complete setup."""
         remaining_seconds = minutes_remaining * 60
-        
+
         # Wait with live countdown updates
         while remaining_seconds > 0:
             wait_chunk = min(30, remaining_seconds)
@@ -489,7 +487,7 @@ async def async_setup_entry(
         # would trigger rate limiting.
         cache_key = f"{CACHED_API_KEY}{config_entry.entry_id}"
         cached_api = hass.data.get(DOMAIN, {}).pop(cache_key, None)
-        
+
         _LOGGER.debug(
             "Checking for cached API with key %s: %s",
             cache_key,
@@ -580,9 +578,7 @@ async def async_unload_entry(
         and config_entry.runtime_data is not None
         and config_entry.runtime_data.total_coordinator is not None
     ):
-        return await hass.config_entries.async_unload_platforms(
-            config_entry, PLATFORMS
-        )
+        return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
     # No platforms were loaded, so unload is automatically successful
     _LOGGER.debug(

@@ -22,11 +22,13 @@ from homeassistant.const import (
 from .sensor_entity_description import GrowattSensorEntityDescription
 
 SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------- #
     # Sensors using mix_* keys for backward-compat with Classic API users #
-    # ------------------------------------------------------------------ #
-
+    # ------------------------------------------------------------------- #
     # Values from 'sph_detail' API call (device/mix/mix_data_info)
+    # NOTE: The key is intentionally "mix_statement_of_charge" (not "state_of_charge")
+    # to preserve backward-compatibility with users migrating from the Classic API,
+    # where SPH appeared as "mix" and used this exact key.
     GrowattSensorEntityDescription(
         key="mix_statement_of_charge",
         translation_key="mix_statement_of_charge",
@@ -65,8 +67,8 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
     GrowattSensorEntityDescription(
         key="mix_battery_charge",
         translation_key="mix_battery_charge",
-        api_key="bdc1ChargePower",
-        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        api_key="pcharge1",
+        native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
@@ -209,7 +211,18 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         api_key="lastdataupdate",
         device_class=SensorDeviceClass.TIMESTAMP,
     ),
-
+    # ------------------------------------------------------------------ #
+    # Sensors available in Classic API but NOT in V1 API (sph_detail /   #
+    # sph_energy endpoints do not return these fields):                  #
+    #   mix_export_to_grid_today        (no V1 equivalent)               #
+    #   mix_import_from_grid_today_combined (no V1 equivalent)           #
+    #   mix_export_to_grid_lifetime     (no V1 equivalent)               #
+    #   mix_load_consumption_lifetime   (no V1 equivalent)               #
+    #   mix_load_consumption            (no V1 equivalent)               #
+    #   mix_load_consumption_today      (no V1 equivalent)               #
+    #   mix_load_consumption_battery_today (no V1 equivalent)            #
+    #   mix_load_consumption_solar_today   (no V1 equivalent)            #
+    # ------------------------------------------------------------------ #
     # ------------------------------------------------------------------ #
     # SPH-specific sensors with sph_* keys (no Classic API equivalent)   #
     # ------------------------------------------------------------------ #

@@ -22,7 +22,10 @@ from homeassistant.helpers import device_registry as dr
 
 from . import setup_integration
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 
 @pytest.mark.usefixtures("init_integration")
@@ -274,7 +277,10 @@ async def test_classic_api_plant_list_exceptions(
 
     # DEFAULT_PLANT_ID resolution now happens in async_migrate_entry (minor_version 0→1).
     # A plant_list failure there returns False → MIGRATION_ERROR (not SETUP_ERROR).
-    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.MIGRATION_ERROR
+    assert (
+        mock_config_entry_classic_default_plant.state
+        is ConfigEntryState.MIGRATION_ERROR
+    )
 
 
 async def test_classic_api_plant_list_no_plants(
@@ -296,7 +302,10 @@ async def test_classic_api_plant_list_no_plants(
 
     # DEFAULT_PLANT_ID resolution now happens in async_migrate_entry (minor_version 0→1).
     # An empty plant_list there returns False → MIGRATION_ERROR (not SETUP_ERROR).
-    assert mock_config_entry_classic_default_plant.state is ConfigEntryState.MIGRATION_ERROR
+    assert (
+        mock_config_entry_classic_default_plant.state
+        is ConfigEntryState.MIGRATION_ERROR
+    )
 
 
 @pytest.mark.parametrize(

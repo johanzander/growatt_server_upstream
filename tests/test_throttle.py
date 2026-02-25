@@ -1,7 +1,7 @@
 """Tests for the Growatt Server throttle functionality."""
 
 from datetime import timedelta
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -20,14 +20,12 @@ from custom_components.growatt_server.throttle import (
 pytestmark = pytest.mark.no_throttle_mock
 
 
-
 @pytest.fixture
 async def throttle_manager(hass: HomeAssistant) -> ApiThrottleManager:
     """Create a throttle manager for testing."""
     manager = ApiThrottleManager(hass)
     await manager.async_load()
     return manager
-
 
 
 async def test_init_throttle_manager(hass: HomeAssistant) -> None:
@@ -87,15 +85,19 @@ async def test_throttle_different_functions_independently(
     """Test that different functions are throttled independently."""
     # Record calls with timestamps at different times
     time_now = dt_util.utcnow()
-    
+
     # function_a was called 4 minutes ago
     function_a_time = time_now - timedelta(minutes=4)
-    throttle_manager._data["function_a"] = function_a_time.replace(tzinfo=dt_util.UTC).isoformat()
-    
+    throttle_manager._data["function_a"] = function_a_time.replace(
+        tzinfo=dt_util.UTC
+    ).isoformat()
+
     # function_b was called 2 minutes ago
     function_b_time = time_now - timedelta(minutes=2)
-    throttle_manager._data["function_b"] = function_b_time.replace(tzinfo=dt_util.UTC).isoformat()
-    
+    throttle_manager._data["function_b"] = function_b_time.replace(
+        tzinfo=dt_util.UTC
+    ).isoformat()
+
     throttle_manager._loaded = True
 
     # function_a should still be throttled (4 minutes < 5)
@@ -106,7 +108,9 @@ async def test_throttle_different_functions_independently(
 
     # Now set function_a to 6 minutes ago (past threshold)
     function_a_time = time_now - timedelta(minutes=6)
-    throttle_manager._data["function_a"] = function_a_time.replace(tzinfo=dt_util.UTC).isoformat()
+    throttle_manager._data["function_a"] = function_a_time.replace(
+        tzinfo=dt_util.UTC
+    ).isoformat()
 
     # function_a should not be throttled (6 minutes > 5)
     assert await throttle_manager.should_throttle("function_a") is False
@@ -253,7 +257,7 @@ async def test_persistence_across_loads(
 ) -> None:
     """Test that throttle data persists across loads."""
     import asyncio
-    
+
     # Record an API call
     await throttle_manager.record_api_call("persistent_function")
 

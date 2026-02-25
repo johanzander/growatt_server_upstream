@@ -14,8 +14,11 @@ from homeassistant.helpers import entity_registry as er
 
 from . import setup_integration
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, snapshot_platform
-
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+    snapshot_platform,
+)
 
 
 async def test_min_sensors_v1_api(
@@ -66,7 +69,6 @@ async def test_sph_sensors_v1_api(
     ],
     ids=["tlx", "inverter", "storage", "mix"],
 )
-
 @pytest.mark.freeze_time("2023-10-21")
 async def test_sensors_classic_api(
     hass: HomeAssistant,

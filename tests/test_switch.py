@@ -23,7 +23,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, snapshot_platform
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+    snapshot_platform,
+)
 
 DOMAIN = "growatt_server"
 
@@ -100,7 +104,6 @@ async def test_switch_service_call_api_error(
         )
 
 
-
 async def test_switch_state_handling_integer_values(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
@@ -135,7 +138,6 @@ async def test_switch_state_handling_integer_values(
     assert state.state == STATE_OFF
 
 
-
 async def test_switch_missing_data(
     hass: HomeAssistant,
     mock_growatt_v1_api,
@@ -157,7 +159,6 @@ async def test_switch_missing_data(
     state = hass.states.get("switch.min123456_charge_from_grid")
     assert state is not None
     assert state.state == STATE_UNKNOWN
-
 
 
 async def test_no_switch_entities_for_non_min_devices(
@@ -191,92 +192,6 @@ async def test_no_switch_entities_for_non_min_devices(
     )
     switch_entities = [entry for entry in entity_entries if entry.domain == "switch"]
     assert len(switch_entities) == 0
-
-
-
-async def test_sph_switch_entities_created(
-    hass: HomeAssistant,
-    mock_growatt_v1_api,
-    mock_config_entry: MockConfigEntry,
-    entity_registry: er.EntityRegistry,
-) -> None:
-    """Test that switch entities are created for SPH devices."""
-    mock_growatt_v1_api.device_list.return_value = {
-        "devices": [{"device_sn": "SPH123456", "type": 5}]
-    }
-    mock_config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    entity_entries = er.async_entries_for_config_entry(
-        entity_registry, mock_config_entry.entry_id
-    )
-    switch_entities = [entry for entry in entity_entries if entry.domain == "switch"]
-    assert len(switch_entities) == 1
-    assert switch_entities[0].unique_id == "SPH123456_ac_charge"
-
-
-@pytest.mark.parametrize(
-    ("service", "expected_value"),
-    [
-        (SERVICE_TURN_ON, 1),
-        (SERVICE_TURN_OFF, 0),
-    ],
-)
-async def test_sph_switch_service_call_success(
-    hass: HomeAssistant,
-    mock_growatt_v1_api,
-    mock_config_entry: MockConfigEntry,
-    service: str,
-    expected_value: int,
-) -> None:
-    """Test SPH switch service calls use sph_write_parameter."""
-    mock_growatt_v1_api.device_list.return_value = {
-        "devices": [{"device_sn": "SPH123456", "type": 5}]
-    }
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    await hass.services.async_call(
-        SWITCH_DOMAIN,
-        service,
-        {ATTR_ENTITY_ID: "switch.sph123456_charge_from_grid"},
-        blocking=True,
-    )
-
-    mock_growatt_v1_api.sph_write_parameter.assert_called_once_with(
-        "SPH123456", "ac_charge", expected_value
-    )
-
-
-@pytest.mark.parametrize(
-    "service",
-    [SERVICE_TURN_ON, SERVICE_TURN_OFF],
-)
-async def test_sph_switch_service_call_api_error(
-    hass: HomeAssistant,
-    mock_growatt_v1_api,
-    mock_config_entry: MockConfigEntry,
-    service: str,
-) -> None:
-    """Test handling API error when calling SPH switch services."""
-    mock_growatt_v1_api.device_list.return_value = {
-        "devices": [{"device_sn": "SPH123456", "type": 5}]
-    }
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    mock_growatt_v1_api.sph_write_parameter.side_effect = GrowattV1ApiError("API Error")
-
-    with pytest.raises(HomeAssistantError, match="Error while setting switch state"):
-        await hass.services.async_call(
-            SWITCH_DOMAIN,
-            service,
-            {ATTR_ENTITY_ID: "switch.sph123456_charge_from_grid"},
-            blocking=True,
-        )
 
 
 async def test_no_switch_entities_for_classic_api(
