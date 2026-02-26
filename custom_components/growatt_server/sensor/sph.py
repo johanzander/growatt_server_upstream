@@ -206,22 +206,63 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     GrowattSensorEntityDescription(
+        key="mix_export_to_grid_today",
+        translation_key="mix_export_to_grid_today",
+        api_key="etoGridToday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_export_to_grid_lifetime",
+        translation_key="mix_export_to_grid_lifetime",
+        api_key="etogridTotal",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_load_consumption_today",
+        translation_key="mix_load_consumption_today",
+        api_key="elocalLoadToday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_load_consumption_lifetime",
+        translation_key="mix_load_consumption_lifetime",
+        api_key="elocalLoadTotal",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_load_consumption_battery_today",
+        translation_key="mix_load_consumption_battery_today",
+        api_key="echarge1",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
+        key="mix_load_consumption_solar_today",
+        translation_key="mix_load_consumption_solar_today",
+        api_key="eChargeToday",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    GrowattSensorEntityDescription(
         key="mix_last_update",
         translation_key="mix_last_update",
         api_key="lastdataupdate",
         device_class=SensorDeviceClass.TIMESTAMP,
     ),
     # ------------------------------------------------------------------ #
-    # Sensors available in Classic API but NOT in V1 API (sph_detail /   #
-    # sph_energy endpoints do not return these fields):                  #
-    #   mix_export_to_grid_today        (no V1 equivalent)               #
-    #   mix_import_from_grid_today_combined (no V1 equivalent)           #
-    #   mix_export_to_grid_lifetime     (no V1 equivalent)               #
-    #   mix_load_consumption_lifetime   (no V1 equivalent)               #
-    #   mix_load_consumption            (no V1 equivalent)               #
-    #   mix_load_consumption_today      (no V1 equivalent)               #
-    #   mix_load_consumption_battery_today (no V1 equivalent)            #
-    #   mix_load_consumption_solar_today   (no V1 equivalent)            #
+    # Sensors available in Classic API but NOT in V1 API:                #
+    #   mix_import_from_grid_today_combined  (synthetic, no V1 field)    #
+    #   mix_load_consumption                 (real-time power, no V1 field)
     # ------------------------------------------------------------------ #
     # ------------------------------------------------------------------ #
     # SPH-specific sensors with sph_* keys (no Classic API equivalent)   #

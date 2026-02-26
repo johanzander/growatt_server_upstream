@@ -78,47 +78,47 @@ write_ac_charge_times:
       selector:
         boolean:
     period_1_start:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_1_end:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_1_enabled:
-      required: true
+      required: false
       example: false
       selector:
         boolean:
     period_2_start:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_2_end:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_2_enabled:
-      required: true
+      required: false
       example: false
       selector:
         boolean:
     period_3_start:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_3_end:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_3_enabled:
-      required: true
+      required: false
       example: false
       selector:
         boolean:
@@ -147,47 +147,47 @@ write_ac_discharge_times:
           max: 100
           mode: slider
     period_1_start:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_1_end:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_1_enabled:
-      required: true
+      required: false
       example: false
       selector:
         boolean:
     period_2_start:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_2_end:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_2_enabled:
-      required: true
+      required: false
       example: false
       selector:
         boolean:
     period_3_start:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_3_end:
-      required: true
+      required: false
       example: "00:00"
       selector:
         time:
     period_3_enabled:
-      required: true
+      required: false
       example: false
       selector:
         boolean:
