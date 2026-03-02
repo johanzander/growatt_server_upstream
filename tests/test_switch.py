@@ -23,7 +23,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, snapshot_platform
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+    snapshot_platform,
+)
 
 DOMAIN = "growatt_server"
 
@@ -100,7 +104,6 @@ async def test_switch_service_call_api_error(
         )
 
 
-
 async def test_switch_state_handling_integer_values(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
@@ -135,7 +138,6 @@ async def test_switch_state_handling_integer_values(
     assert state.state == STATE_OFF
 
 
-
 async def test_switch_missing_data(
     hass: HomeAssistant,
     mock_growatt_v1_api,
@@ -157,7 +159,6 @@ async def test_switch_missing_data(
     state = hass.states.get("switch.min123456_charge_from_grid")
     assert state is not None
     assert state.state == STATE_UNKNOWN
-
 
 
 async def test_no_switch_entities_for_non_min_devices(

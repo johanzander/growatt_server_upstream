@@ -152,6 +152,134 @@ def mock_growatt_v1_api():
             }
         )
 
+        # Called by SPH device coordinator during refresh
+        mock_v1_api.sph_detail.return_value = {
+            "deviceSn": "SPH123456",
+            # Control/settings fields (used by switch/number/service entities)
+            "acChargeEnable": 1,
+            "chargePowerCommand": 60,
+            "wchargeSOCLowLimit": 20,
+            "disChargePowerCommand": 70,
+            "wdisChargeSOCLowLimit": 15,
+            "forcedChargeTimeStart1": "06:00",
+            "forcedChargeTimeStop1": "08:00",
+            "forcedChargeStopSwitch1": 1,
+            "forcedChargeTimeStart2": "00:00",
+            "forcedChargeTimeStop2": "00:00",
+            "forcedChargeStopSwitch2": 0,
+            "forcedChargeTimeStart3": "00:00",
+            "forcedChargeTimeStop3": "00:00",
+            "forcedChargeStopSwitch3": 0,
+            "forcedDischargeTimeStart1": "18:00",
+            "forcedDischargeTimeStop1": "22:00",
+            "forcedDischargeStopSwitch1": 1,
+            "forcedDischargeTimeStart2": "00:00",
+            "forcedDischargeTimeStop2": "00:00",
+            "forcedDischargeStopSwitch2": 0,
+            "forcedDischargeTimeStart3": "00:00",
+            "forcedDischargeTimeStop3": "00:00",
+            "forcedDischargeStopSwitch3": 0,
+            # Sensor/measurement fields
+            "bmsSOC": 75,
+            "vbat": 53.2,
+            "vpv1": 380.5,
+            "vpv2": 365.2,
+            "vac1": 230.8,
+            "fac": 50.01,
+            "pcharge1": 2500,
+            "pdischarge1": 1500,
+            "pacToGridTotal": 1.2,
+            "pacToUserR": 0.8,
+            "temp1": 35.0,
+            "temp2": 37.5,
+            "temp3": 32.0,
+            "temp4": 28.5,
+            "temp5": 40.0,
+        }
+        mock_v1_api.sph_energy.return_value = {
+            "echarge1Today": 3.5,
+            "echarge1Total": 80.2,
+            "edischarge1Today": 4.1,
+            "edischarge1Total": 95.6,
+            "epvtoday": 8.7,
+            "epvTotal": 220.4,
+            "ppv1": 1200,
+            "ppv2": 900,
+            "ppv": 2100,
+            "esystemtoday": 10.2,
+            "eselfToday": 7.5,
+            "etoUserToday": 2.4,
+            "etoGridToday": 1.8,
+            "etogridTotal": 450.3,
+            "elocalLoadToday": 5.6,
+            "elocalLoadTotal": 1320.7,
+            "echarge1": 2.1,
+            "eChargeToday": 3.4,
+            "time": "2023-10-21 10:30:00",
+        }
+
+        # Called by SPH switch/number entities and AC charge/discharge time services
+        mock_v1_api.sph_write_parameter = Mock(return_value=None)
+        mock_v1_api.sph_write_ac_charge_times = Mock(
+            return_value={"error_code": 0, "error_msg": "Success"}
+        )
+        mock_v1_api.sph_write_ac_discharge_times = Mock(
+            return_value={"error_code": 0, "error_msg": "Success"}
+        )
+        mock_v1_api.sph_read_ac_charge_times = Mock(
+            return_value={
+                "charge_power": 60,
+                "charge_stop_soc": 20,
+                "mains_enabled": True,
+                "periods": [
+                    {
+                        "period_id": 1,
+                        "start_time": "06:00",
+                        "end_time": "08:00",
+                        "enabled": True,
+                    },
+                    {
+                        "period_id": 2,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                    {
+                        "period_id": 3,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                ],
+            }
+        )
+        mock_v1_api.sph_read_ac_discharge_times = Mock(
+            return_value={
+                "discharge_power": 70,
+                "discharge_stop_soc": 15,
+                "periods": [
+                    {
+                        "period_id": 1,
+                        "start_time": "18:00",
+                        "end_time": "22:00",
+                        "enabled": True,
+                    },
+                    {
+                        "period_id": 2,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                    {
+                        "period_id": 3,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "enabled": False,
+                    },
+                ],
+            }
+        )
+
         yield mock_v1_api
 
 
@@ -335,17 +463,21 @@ def mock_throttle_manager(request):
     if "no_throttle_mock" in request.keywords:
         yield None
         return
-        
-    with patch(
-        "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
-        return_value=False,  # Never throttle during tests
-    ), patch(
-        "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
-    ) as mock_throttled_call:
+
+    with (
+        patch(
+            "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
+            return_value=False,  # Never throttle during tests
+        ),
+        patch(
+            "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
+        ) as mock_throttled_call,
+    ):
         # Make throttled_call pass through to the actual function
         async def passthrough_call(func, *args, **kwargs):
             """Execute the function without throttling."""
             import asyncio
+
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
             return func(*args, **kwargs)

@@ -221,6 +221,24 @@
       "mix_wattage_pv_all": {
         "name": "All PV wattage"
       },
+      "sph_grid_frequency": {
+        "name": "AC frequency"
+      },
+      "sph_temperature_1": {
+        "name": "Temperature 1"
+      },
+      "sph_temperature_2": {
+        "name": "Temperature 2"
+      },
+      "sph_temperature_3": {
+        "name": "Temperature 3"
+      },
+      "sph_temperature_4": {
+        "name": "Temperature 4"
+      },
+      "sph_temperature_5": {
+        "name": "Temperature 5"
+      },
       "storage_ac_input_frequency_out": {
         "name": "AC input frequency"
       },

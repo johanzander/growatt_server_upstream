@@ -19,7 +19,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, snapshot_platform
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+    snapshot_platform,
+)
 
 DOMAIN = "growatt_server"
 
@@ -96,7 +100,6 @@ async def test_all_number_entities_service_calls(
         )
 
 
-
 async def test_number_missing_data(
     hass: HomeAssistant,
     mock_growatt_v1_api,
@@ -121,7 +124,6 @@ async def test_number_missing_data(
     state = hass.states.get("number.min123456_battery_charge_power_limit")
     assert state is not None
     assert state.state == STATE_UNKNOWN
-
 
 
 async def test_no_number_entities_for_non_min_devices(
@@ -201,7 +203,6 @@ async def test_float_to_int_conversion(
         "charge_power",
         75,  # Should be converted to int
     )
-
 
 
 async def test_number_coordinator_data_update(

@@ -65,22 +65,24 @@ class ApiThrottleManager:
                 )
                 return False
 
-            # Old format: ISO string without explicit timezone info  
+            # Old format: ISO string without explicit timezone info
             # New format: ISO string with explicit UTC timezone info
             if last_call.tzinfo is None:
                 # This is likely a legacy timestamp from old torage
                 # We stored UTC times but without timezone markers, so assume UTC
                 _LOGGER.debug(
-                    "Found legacy timestamp without timezone for %s, assuming UTC: %s", 
-                    func_name, last_call_str
+                    "Found legacy timestamp without timezone for %s, assuming UTC: %s",
+                    func_name,
+                    last_call_str,
                 )
                 last_call = last_call.replace(tzinfo=dt_util.UTC)
             elif last_call.tzinfo != dt_util.UTC:
                 # This shouldn't happen with either old or new format, but handle edge cases
                 # where dt_util.parse_datetime() returns a non-UTC timezone
                 _LOGGER.warning(
-                    "Unexpected timezone %s for %s, converting to UTC", 
-                    last_call.tzinfo, func_name
+                    "Unexpected timezone %s for %s, converting to UTC",
+                    last_call.tzinfo,
+                    func_name,
                 )
                 last_call = last_call.astimezone(dt_util.UTC)
 
