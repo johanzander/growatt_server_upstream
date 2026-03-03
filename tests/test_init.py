@@ -380,7 +380,7 @@ async def test_v1_api_unsupported_device_type(
     mock_growatt_v1_api,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test V1 API logs warning for unsupported device types (non-MIN)."""
+    """Test V1 API logs warning for unsupported device types (non-MIN, non-SPH)."""
     config = {
         CONF_TOKEN: "test_token_123",
         CONF_URL: "https://openapi.growatt.com/",
@@ -393,11 +393,11 @@ async def test_v1_api_unsupported_device_type(
         unique_id="plant_123",
     )
 
-    # Return mix of MIN (type 7) and other device types
+    # Return mix of MIN (type 7) and an unknown device type (99 is not supported)
     mock_growatt_v1_api.device_list.return_value = {
         "devices": [
             {"device_sn": "MIN123456", "type": 7},  # Supported
-            {"device_sn": "TLX789012", "type": 8},  # Unsupported
+            {"device_sn": "UNK999999", "type": 99},  # Unsupported type
         ]
     }
 
@@ -405,4 +405,4 @@ async def test_v1_api_unsupported_device_type(
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
     # Verify warning was logged for unsupported device
-    assert "Device TLX789012 with type 8 not supported in Open API V1" in caplog.text
+    assert "Device UNK999999 with type 99 not supported in Open API V1" in caplog.text

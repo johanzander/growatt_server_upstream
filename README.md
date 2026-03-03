@@ -7,34 +7,9 @@ Upstream development version of the Growatt Server integration for Home Assistan
 
 ## About
 
-This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core. From version 1.5.0 it should be compatible with the [Growatt BESS (Battery Energy Storage System) Manager][bess]
+This repository serves as an **upstream testing ground** for improvements to the Growatt Server integration before they are submitted to Home Assistant Core. From version 1.5.0 it should be compatible with the [Growatt BESS (Battery Energy Storage System) Manager][bess].
 
-## Features
-
-**Current Version**: v2.1.0
-**Base Version**: Home Assistant Core 2026.2 Growatt Server integration
-
-## What's New in v2.1.0
-
-- **Bump growattServer to 1.9.0**: Updated the underlying Python library to the latest version for improved API compatibility and bug fixes
-- **Fix midnight bounce suppression**: Resolves Energy Dashboard double-counting for "today" sensors when the Growatt API delivers stale yesterday values after midnight reset ([#162378](https://github.com/home-assistant/core/issues/162378))
-
-## What's New in v2.0.0
-
-1. **HA Core Base**: Integration fully based on HA Core version 2026.1
-   - includes API Token authentication ([PR #149783][pr-149783])
-   - MIN inverter control ([PR #153468][pr-153468])
-   - Energy Dashboard support with `state_class`
-   - TOU control services, previously only available in upstream v1.6.0
-   - Enhanced TLX sensor coverage (14 additional sensors for power/energy monitoring)
-
-2. **Config entry migration**: Seamless upgrade path from older versions - automatically migrates legacy configurations and resolves deprecated plant ID settings (based on [PR #159972](https://github.com/home-assistant/core/pull/159972))
-3. **Re-authentication flow**: Detects authentication failures and prompts users to re-enter credentials - prevents silent integration failures by guiding users through credential updates
-4. **API caching**: Prevents duplicate login during migration - caches authenticated sessions between migration and setup to avoid triggering account lockout (part of fix for [issue #154724](https://github.com/home-assistant/core/issues/154724))
-
-## Kept from v1.6.0
-
-**Persistent API throttling**: 5-minute cooldown protection that survives Home Assistant restarts - prevents account lockout from too many login attempts even after system reboots (fixes [issue #154724](https://github.com/home-assistant/core/issues/154724))
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## Installation
 
@@ -104,8 +79,4 @@ After adding this configuration:
 [issues]: https://github.com/johanzander/growatt_server_upstream/issues
 [releases-shield]: https://img.shields.io/github/release/johanzander/growatt_server_upstream.svg
 [releases]: https://github.com/johanzander/growatt_server_upstream/releases
-[pr-149783]: https://github.com/home-assistant/core/pull/149783
-[pr-153468]: https://github.com/home-assistant/core/pull/153468
-[issue-150732]: https://github.com/home-assistant/core/issues/150732
 [bess]: https://github.com/johanzander/bess-manager
-
