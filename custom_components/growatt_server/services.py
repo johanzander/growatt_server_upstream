@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntryState
@@ -24,44 +24,28 @@ if TYPE_CHECKING:
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register services for Growatt Server integration."""
 
-    def get_min_coordinators() -> dict[str, GrowattCoordinator]:
-        """Get all MIN coordinators with V1 API from loaded config entries."""
-        min_coordinators: dict[str, GrowattCoordinator] = {}
-
+    def get_coordinator(device_id: str, device_type: str) -> GrowattCoordinator:
+        """Get a V1 API coordinator for the given device type and device registry ID."""
+        coordinators: dict[str, GrowattCoordinator] = {}
         for entry in hass.config_entries.async_entries(DOMAIN):
             if entry.state != ConfigEntryState.LOADED:
                 continue
-
-            # Add MIN coordinators from this entry
             for coord in entry.runtime_data.devices.values():
-                if coord.device_type == "min" and coord.api_version == "v1":
-                    min_coordinators[coord.device_id] = coord
+                if coord.device_type == device_type and coord.api_version == "v1":
+                    coordinators[coord.device_id] = coord
 
-        return min_coordinators
-
-    def get_coordinator(device_id: str) -> GrowattCoordinator:
-        """Get coordinator by device_id.
-
-        Args:
-            device_id: Device registry ID (not serial number)
-        """
-        # Get current coordinators (they may have changed since service registration)
-        min_coordinators = get_min_coordinators()
-
-        if not min_coordinators:
+        if not coordinators:
             raise ServiceValidationError(
-                "No MIN devices with token authentication are configured. "
-                "Services require MIN devices with V1 API access."
+                f"No {device_type.upper()} devices with token authentication are configured. "
+                f"Services require {device_type.upper()} devices with V1 API access."
             )
 
-        # Device registry ID provided - map to serial number
         device_registry = dr.async_get(hass)
         device_entry = device_registry.async_get(device_id)
 
         if not device_entry:
             raise ServiceValidationError(f"Device '{device_id}' not found")
 
-        # Extract serial number from device identifiers
         serial_number = None
         for identifier in device_entry.identifiers:
             if identifier[0] == DOMAIN:
@@ -73,13 +57,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 f"Device '{device_id}' is not a Growatt device"
             )
 
-        # Find coordinator by serial number
-        if serial_number not in min_coordinators:
+        if serial_number not in coordinators:
             raise ServiceValidationError(
-                f"MIN device '{serial_number}' not found or not configured for services"
+                f"Device '{serial_number}' is not configured as a {device_type.upper()} device"
             )
 
-        return min_coordinators[serial_number]
+        return coordinators[serial_number]
 
     async def handle_update_time_segment(call: ServiceCall) -> None:
         """Handle update_time_segment service call."""
@@ -131,7 +114,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             ) from err
 
         # Get the appropriate MIN coordinator
-        coordinator: GrowattCoordinator = get_coordinator(device_id)
+        coordinator: GrowattCoordinator = get_coordinator(device_id, "min")
 
         await coordinator.update_time_segment(
             segment_id,
@@ -146,7 +129,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         device_id: str = call.data["device_id"]
 
         # Get the appropriate MIN coordinator
-        coordinator: GrowattCoordinator = get_coordinator(device_id)
+        coordinator: GrowattCoordinator = get_coordinator(device_id, "min")
 
         time_segments: list[dict[str, Any]] = await coordinator.read_time_segments()
 
@@ -269,5 +252,33 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "read_time_segments",
         handle_read_time_segments,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "write_ac_charge_times",
+        handle_write_ac_charge_times,
+        supports_response=SupportsResponse.NONE,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "write_ac_discharge_times",
+        handle_write_ac_discharge_times,
+        supports_response=SupportsResponse.NONE,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "read_ac_charge_times",
+        handle_read_ac_charge_times,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "read_ac_discharge_times",
+        handle_read_ac_discharge_times,
         supports_response=SupportsResponse.ONLY,
     )
