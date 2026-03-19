@@ -67,6 +67,37 @@ After adding this configuration:
 3. Check the logs in **Settings → System → Logs** or in your `home-assistant.log` file
 4. Include relevant log entries when reporting issues
 
+## Troubleshooting
+
+### "Device is already configured" error
+
+If you see this error when trying to add the integration, it means a config entry with the same plant ID already exists. This commonly happens if you previously had the built-in Home Assistant Growatt Server integration configured — even if you removed it from the UI, a stale entry can remain in the config storage.
+
+**To check for a stale entry**, create a [Long-Lived Access Token](https://developers.home-assistant.io/docs/auth_api/#long-lived-access-token) from your HA profile, then run:
+
+```bash
+curl -s \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://YOUR_HA_ADDRESS:8123/api/config/config_entries/entry \
+  | python3 -m json.tool | grep -B 5 -A 10 growatt_server
+```
+
+If a stale entry is found, **delete it** using the `entry_id` from the output:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://YOUR_HA_ADDRESS:8123/api/config/config_entries/entry/THE_ENTRY_ID
+```
+
+Alternatively, you can inspect the file directly via the **File Editor** or **Terminal & SSH** add-ons:
+
+```bash
+grep -i growatt /config/.storage/core.config_entries
+```
+
+After removing the stale entry, try adding the integration again.
+
 ## Support
 
 - 🐛 **Issues**: [GitHub Issues][issues]
