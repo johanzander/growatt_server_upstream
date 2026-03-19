@@ -167,6 +167,9 @@
       "mix_import_from_grid_today": {
         "name": "Import from grid today (load)"
       },
+      "mix_import_from_grid_total": {
+        "name": "Lifetime import from grid"
+      },
       "mix_import_from_grid_today_combined": {
         "name": "Import from grid today (load + charging)"
       },

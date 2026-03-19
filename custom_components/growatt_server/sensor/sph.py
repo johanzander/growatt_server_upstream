@@ -206,6 +206,16 @@ SPH_SENSOR_TYPES: tuple[GrowattSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     GrowattSensorEntityDescription(
+        key="mix_import_from_grid_total",
+        translation_key="mix_import_from_grid_total",
+        api_key="etoUserTotal",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        never_resets=True,
+        precision=1,
+    ),
+    GrowattSensorEntityDescription(
         key="mix_export_to_grid_today",
         translation_key="mix_export_to_grid_today",
         api_key="etoGridToday",
