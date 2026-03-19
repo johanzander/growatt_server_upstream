@@ -209,6 +209,7 @@ def mock_growatt_v1_api():
             "esystemtoday": 10.2,
             "eselfToday": 7.5,
             "etoUserToday": 2.4,
+            "etoUserTotal": 1850.6,
             "etoGridToday": 1.8,
             "etogridTotal": 450.3,
             "elocalLoadToday": 5.6,
