@@ -6,7 +6,14 @@ Classic API (username/password):
 - Authenticates via api.login(), which returns a dict with a "success" key.
 - Auth failure is signalled by success=False and msg="502" (LOGIN_INVALID_AUTH_CODE).
 - A failed login does NOT raise an exception — the return value must be checked.
-- The coordinator calls api.login() on every update cycle to maintain the session.
+- One authenticated API instance (created here in async_setup_entry, or reused
+  from async_migrate_entry via CACHED_API_KEY) is shared by every coordinator
+  for this config entry via runtime_data.api — coordinators do NOT log in on
+  every update cycle. Session expiry shows up as a JSONDecodeError (the server
+  returns an HTML login page instead of JSON); GrowattCoordinator handles that
+  reactively via _async_re_login rather than re-authenticating on every poll,
+  which would multiply login() calls by the device count and trigger the
+  Growatt API's rate limit.
 
 Open API V1 (API token):
 - Stateless — no login call, token is sent as a Bearer header on every request.
@@ -376,6 +383,17 @@ async def async_setup_entry(
             translation_key="unknown_auth_type",
         )
 
+    # Store the authenticated API instance in runtime_data BEFORE creating any
+    # coordinators — GrowattCoordinator reads config_entry.runtime_data.api in
+    # its __init__ so every coordinator for this entry shares the same
+    # (already logged-in, for Classic API) instance instead of each one
+    # creating and logging into its own.
+    config_entry.runtime_data = GrowattRuntimeData(
+        api=api,
+        total_coordinator=None,  # type: ignore[arg-type]
+        devices={},
+    )
+
     # Create a coordinator for the total sensors
     total_coordinator = GrowattCoordinator(
         hass, config_entry, plant_id, "total", plant_id
@@ -399,6 +417,7 @@ async def async_setup_entry(
 
     # Store runtime data in the config entry
     config_entry.runtime_data = GrowattRuntimeData(
+        api=api,
         total_coordinator=total_coordinator,
         devices=device_coordinators,
     )
