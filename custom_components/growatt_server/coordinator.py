@@ -3,6 +3,7 @@
 import datetime
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, override
 
 import growattServer
@@ -11,7 +12,7 @@ from requests import RequestException
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -25,9 +26,7 @@ from .const import (
     BATT_MODE_BATTERY_FIRST,
     BATT_MODE_GRID_FIRST,
     BATT_MODE_LOAD_FIRST,
-    DEFAULT_URL,
     DOMAIN,
-    LOGIN_INVALID_AUTH_CODE,
     V1_DEVICE_TYPES,
 )
 from .models import GrowattRuntimeData
@@ -72,23 +71,13 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # executor thread (_sync_update_data). Bool assignment is atomic under CPython's GIL.
         self._fetch_device_list: bool = False
 
-        if self.api_version == "v1":
-            self.username = None
-            self.password = None
-            self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
-            self.token = config_entry.data["token"]
-            self.api = growattServer.OpenApiV1(token=self.token)
-            self.api.server_url = self.url
-        elif self.api_version == "classic":
-            self.username = config_entry.data.get(CONF_USERNAME)
-            self.password = config_entry.data[CONF_PASSWORD]
-            self.url = config_entry.data.get(CONF_URL, DEFAULT_URL)
-            self.api = growattServer.GrowattApi(
-                add_random_user_id=True, agent_identifier=self.username
-            )
-            self.api.server_url = self.url
-        else:
-            raise ValueError(f"Unknown API version: {self.api_version}")
+        # Use the shared, already-authenticated API instance from runtime_data
+        # instead of creating a new one per coordinator. For Classic API this
+        # means the session (and its login) is shared across every coordinator
+        # for this config entry, rather than each one logging in independently
+        # on every scan interval — the latter multiplies login() calls by the
+        # device count on every poll and triggers the Growatt API's rate limit.
+        self.api = config_entry.runtime_data.api
 
         super().__init__(
             hass,
@@ -152,21 +141,10 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         fetch_device_list = self._fetch_device_list
         self._fetch_device_list = False
 
-        # login only required for classic API
-        if self.api_version == "classic":
-            login_response = self.api.login(self.username, self.password)
-            if not login_response.get("success"):
-                msg = login_response.get("msg", "Unknown error")
-                if msg == LOGIN_INVALID_AUTH_CODE:
-                    raise ConfigEntryAuthFailed(
-                        translation_domain=DOMAIN,
-                        translation_key="invalid_credentials",
-                    )
-                raise UpdateFailed(
-                    translation_domain=DOMAIN,
-                    translation_key="login_failed",
-                    translation_placeholders={"message": msg},
-                )
+        # No login needed here — the shared API instance (self.api, from
+        # runtime_data) already holds an authenticated session for Classic
+        # API. Session expiry is handled reactively by _async_re_login, not
+        # by logging in again on every poll.
 
         if self.device_type == "total":
             if self.api_version == "v1":
@@ -331,12 +309,85 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self.data
 
+    async def _async_re_login(self) -> bool:
+        """Attempt to re-login to the Growatt API when session expires (Classic API only).
+
+        Uses a shared lock to prevent multiple coordinators from logging in
+        simultaneously, and a 60-second cooldown to avoid redundant logins.
+        """
+        if self.api_version != "classic":
+            return False
+
+        runtime_data = self.config_entry.runtime_data
+
+        async with runtime_data.login_lock:
+            # If another coordinator already re-logged in within the last 60s,
+            # the session should be valid — skip redundant login
+            now = time.monotonic()
+            if (
+                runtime_data.last_login_time
+                and (now - runtime_data.last_login_time) < 60
+            ):
+                _LOGGER.debug(
+                    "Session recently restored (%.0fs ago), skipping re-login for %s",
+                    now - runtime_data.last_login_time,
+                    self.device_id,
+                )
+                return True
+
+            config = self.config_entry.data
+            username = config.get(CONF_USERNAME)
+            password = config.get(CONF_PASSWORD)
+
+            if not username or not password:
+                _LOGGER.error(
+                    "Cannot re-login for %s: credentials not available",
+                    self.device_id,
+                )
+                return False
+
+            login_response = await self.hass.async_add_executor_job(
+                self.api.login, username, password
+            )
+            if login_response.get("success"):
+                runtime_data.last_login_time = now
+                _LOGGER.info(
+                    "Successfully re-authenticated with Growatt API (triggered by %s)",
+                    self.device_id,
+                )
+                return True
+            _LOGGER.error(
+                "Re-login failed: %s", login_response.get("msg", "Unknown error")
+            )
+            return False
+
     @override
     async def _async_update_data(self) -> dict[str, Any]:
         """Asynchronously update data via library."""
         try:
             return await self.hass.async_add_executor_job(self._sync_update_data)
         except json.decoder.JSONDecodeError as err:
+            # Session expired — server returned an HTML login page instead of
+            # JSON. Try a single re-login + retry before giving up (Classic
+            # API only; V1 API is token-based and stateless).
+            if self.api_version == "classic":
+                _LOGGER.warning(
+                    "Data fetch failed for %s (%s: %s), attempting re-login",
+                    self.device_id,
+                    type(err).__name__,
+                    err,
+                )
+                if await self._async_re_login():
+                    try:
+                        return await self.hass.async_add_executor_job(
+                            self._sync_update_data
+                        )
+                    except json.decoder.JSONDecodeError as retry_err:
+                        raise UpdateFailed(
+                            translation_domain=DOMAIN,
+                            translation_key="fetch_data_failed",
+                            translation_placeholders={"error": str(retry_err)},
+                        ) from retry_err
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="fetch_data_failed",
