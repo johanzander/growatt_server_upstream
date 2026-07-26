@@ -7,7 +7,7 @@ import growattServer
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.components.growatt_server.const import DOMAIN
+from custom_components.growatt_server.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
@@ -478,7 +478,7 @@ async def test_read_time_segments_api_error(
     # Mock API error by making coordinator.read_time_segments raise an exception
     with (
         patch(
-            "homeassistant.components.growatt_server.coordinator.GrowattCoordinator.read_time_segments",
+            "custom_components.growatt_server.coordinator.GrowattCoordinator.read_time_segments",
             side_effect=HomeAssistantError("API connection failed"),
         ),
         pytest.raises(HomeAssistantError, match="API connection failed"),

@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.components.growatt_server.const import (
+from custom_components.growatt_server.const import (
     AUTH_API_TOKEN,
     AUTH_PASSWORD,
     CONF_AUTH_TYPE,
@@ -19,6 +19,18 @@ from homeassistant.core import HomeAssistant
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.syrupy import HomeAssistantSnapshotExtension
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Enable custom integrations for every test.
+
+    Without this, HA's config-entry setup loads the real, PyPI-installed
+    homeassistant.components.growatt_server instead of this repo's
+    custom_components/growatt_server — so tests would pass or fail against
+    the wrong code entirely.
+    """
+    yield
 
 
 @pytest.fixture
@@ -50,7 +62,7 @@ def mock_growatt_v1_api():
     - min_write_time_segment: Called by time segment management services
     """
     with patch(
-        "homeassistant.components.growatt_server.config_flow.growattServer.OpenApiV1",
+        "custom_components.growatt_server.config_flow.growattServer.OpenApiV1",
         autospec=True,
     ) as mock_v1_api_class:
         mock_v1_api = mock_v1_api_class.return_value
@@ -306,7 +318,7 @@ def mock_growatt_classic_api():
     - tlx_detail: Provides TLX device data
     """
     with patch(
-        "homeassistant.components.growatt_server.config_flow.growattServer.GrowattApi",
+        "custom_components.growatt_server.config_flow.growattServer.GrowattApi",
         autospec=True,
     ) as mock_classic_api_class:
         # Use the autospec'd mock instance instead of creating a new Mock()
@@ -446,7 +458,7 @@ async def init_integration(
 def mock_setup_entry():
     """Mock async_setup_entry to prevent actual setup during config flow tests."""
     with patch(
-        "homeassistant.components.growatt_server.async_setup_entry",
+        "custom_components.growatt_server.async_setup_entry",
         return_value=True,
     ) as mock:
         yield mock
