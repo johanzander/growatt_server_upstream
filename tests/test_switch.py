@@ -8,7 +8,7 @@ from growattServer import GrowattV1ApiError
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.components.growatt_server.coordinator import SCAN_INTERVAL
+from custom_components.growatt_server.coordinator import SCAN_INTERVAL
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -36,7 +36,7 @@ DOMAIN = "growatt_server"
 async def switch_only() -> AsyncGenerator[None]:
     """Enable only the switch platform."""
     with patch(
-        "homeassistant.components.growatt_server.PLATFORMS",
+        "custom_components.growatt_server.PLATFORMS",
         [Platform.SWITCH],
     ):
         yield
@@ -93,7 +93,7 @@ async def test_switch_service_call_api_error(
 ) -> None:
     """Test handling API error when calling switch services."""
     # Mock API to raise error
-    mock_growatt_v1_api.min_write_parameter.side_effect = GrowattV1ApiError("API Error")
+    mock_growatt_v1_api.min_write_parameter.side_effect = GrowattV1ApiError("API Error", error_code=1, error_msg="API Error")
 
     with pytest.raises(HomeAssistantError, match="Error while setting switch state"):
         await hass.services.async_call(

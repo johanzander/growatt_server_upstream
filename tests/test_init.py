@@ -9,7 +9,7 @@ import pytest
 import requests
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.components.growatt_server.const import (
+from custom_components.growatt_server.const import (
     AUTH_API_TOKEN,
     AUTH_PASSWORD,
     CONF_AUTH_TYPE,
@@ -56,7 +56,12 @@ async def test_device_info(
 @pytest.mark.parametrize(
     ("exception", "expected_state"),
     [
-        (growattServer.GrowattV1ApiError("API Error"), ConfigEntryState.SETUP_ERROR),
+        (
+            growattServer.GrowattV1ApiError(
+                "API Error", error_code=1, error_msg="API Error"
+            ),
+            ConfigEntryState.SETUP_ERROR,
+        ),
         (
             json.decoder.JSONDecodeError("Invalid JSON", "", 0),
             ConfigEntryState.SETUP_ERROR,
@@ -91,7 +96,7 @@ async def test_coordinator_update_failed(
 
     # Cause coordinator update to fail
     mock_growatt_v1_api.min_detail.side_effect = growattServer.GrowattV1ApiError(
-        "Connection timeout"
+        "Connection timeout", error_code=1, error_msg="Connection timeout"
     )
 
     # Trigger coordinator refresh

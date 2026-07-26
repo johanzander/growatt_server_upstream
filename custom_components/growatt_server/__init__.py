@@ -1,18 +1,49 @@
-"""The Growatt server PV inverter sensor integration."""
+"""The Growatt server PV inverter sensor integration.
 
-import asyncio
+This integration supports two distinct Growatt APIs with different auth models:
+
+Classic API (username/password):
+- Authenticates via api.login(), which returns a dict with a "success" key.
+- Auth failure is signalled by success=False and msg="502" (LOGIN_INVALID_AUTH_CODE).
+- A failed login does NOT raise an exception — the return value must be checked.
+- The coordinator calls api.login() on every update cycle to maintain the session.
+
+Open API V1 (API token):
+- Stateless — no login call, token is sent as a Bearer header on every request.
+- Auth failure is signalled by raising GrowattV1ApiError with
+  error_code=GrowattV1ApiErrorCode.NO_PRIVILEGE. The library NEVER returns a failure silently;
+  any non-zero error_code raises an exception via _process_response().
+- Because the library always raises on error, return-value validation after a
+  successful V1 API call is unnecessary — if it returned, the token was valid.
+
+Error handling pattern for reauth:
+- Classic API: check NOT login_response["success"] and msg == LOGIN_INVALID_AUTH_CODE
+  → raise ConfigEntryAuthFailed
+- V1 API: catch GrowattV1ApiError with error_code == GrowattV1ApiErrorCode.NO_PRIVILEGE
+  → raise ConfigEntryAuthFailed
+- All other errors → ConfigEntryError (setup) or UpdateFailed (coordinator)
+"""
+# pylint: disable=home-assistant-use-runtime-data  # Uses legacy hass.data[DOMAIN] pattern
+
 from collections.abc import Mapping
+import datetime
 from json import JSONDecodeError
 import logging
 
 import growattServer
+from growattServer import GrowattV1ApiErrorCode
 from requests import RequestException
 
-from homeassistant.components import persistent_notification
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+)
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -24,42 +55,58 @@ from .const import (
     DEFAULT_PLANT_ID,
     DEFAULT_URL,
     DEPRECATED_URLS,
+    DEVICE_SCAN_INTERVAL,
     DOMAIN,
     LOGIN_INVALID_AUTH_CODE,
     PLATFORMS,
+    SUPPORTED_DEVICE_TYPES,
+    V1_DEVICE_TYPES,
 )
 from .coordinator import GrowattConfigEntry, GrowattCoordinator
 from .models import GrowattRuntimeData
-from .services import async_register_services
+from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-# Device types supported by the Open API V1 (type id → deviceType string)
-V1_DEVICE_TYPES: dict[int, str] = {5: "sph", 7: "min"}
-
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Growatt Server component."""
+    """Set up the Growatt Server integration."""
     # Register services
-    await async_register_services(hass)
+    async_setup_services(hass)
     return True
 
 
 async def async_migrate_entry(
     hass: HomeAssistant, config_entry: GrowattConfigEntry
 ) -> bool:
-    """Migrate old entry."""
+    """Migrate old config entries.
+
+    Migration from version 1.0 to 1.1:
+    - Resolves DEFAULT_PLANT_ID (legacy value "0") to actual plant_id
+    - Only applies to Classic API (username/password authentication)
+    - Caches the logged-in API instance to avoid growatt server API rate limiting
+
+    Rate Limiting Workaround:
+    The Growatt Classic API rate-limits individual endpoints (login, plant_list,
+    device_list) with 5-minute windows. Without caching, the sequence would be:
+        Migration: login() → plant_list()
+        Setup:     login() → device_list()
+    This results in 2 login() calls within seconds, triggering rate limits.
+
+    By caching the API instance (which contains the authenticated session), we
+    achieve:
+        Migration: login() → plant_list() → [cache API instance]
+        Setup:     [reuse cached API] → device_list()
+    This reduces to just 1 login() call during the
+    migration+setup cycle and prevent account lockout.
+    """
     _LOGGER.debug(
-        "Migrating configuration from version %s.%s",
+        "Migrating config entry from version %s.%s",
         config_entry.version,
         config_entry.minor_version,
     )
-
-    if config_entry.version > 1:
-        # User has downgraded from a future version
-        return False
 
     # Migrate from version 1.0 to 1.1
     if config_entry.version == 1 and config_entry.minor_version < 1:
@@ -90,7 +137,8 @@ async def async_migrate_entry(
 
         # Handle DEFAULT_PLANT_ID resolution
         if config.get(CONF_PLANT_ID) == DEFAULT_PLANT_ID:
-            # V1 API should never have DEFAULT_PLANT_ID (plant selection happens in config flow)
+            # V1 API should never have DEFAULT_PLANT_ID
+            # (plant selection happens in config flow)
             # If it does, this indicates a corrupted config entry
             if config.get(CONF_AUTH_TYPE) == AUTH_API_TOKEN:
                 _LOGGER.error(
@@ -114,27 +162,15 @@ async def async_migrate_entry(
 
                 try:
                     # Create API instance and login
-                    api = growattServer.GrowattApi(
-                        add_random_user_id=True, agent_identifier=username
+                    api, login_response = await _create_api_and_login(
+                        hass, username, password, url
                     )
-                    api.server_url = url
-
-                    login_response = await hass.async_add_executor_job(
-                        api.login, username, password
-                    )
-                    if not login_response.get("success"):
-                        _LOGGER.error(
-                            "Migration failed: Unable to login to fetch plant_id"
-                        )
-                        return False
-
-                    user_id = login_response["user"]["id"]
 
                     # Resolve DEFAULT_PLANT_ID to actual plant_id
                     plant_info = await hass.async_add_executor_job(
-                        api.plant_list, user_id
+                        api.plant_list, login_response["user"]["id"]
                     )
-                except (RequestException, JSONDecodeError) as ex:
+                except (ConfigEntryError, RequestException, JSONDecodeError) as ex:
                     # API failure during migration - return False to retry later
                     _LOGGER.error(
                         "Failed to resolve plant_id during migration: %s. "
@@ -161,9 +197,7 @@ async def async_migrate_entry(
 
                 # Cache the logged-in API instance for reuse in async_setup_entry()
                 hass.data.setdefault(DOMAIN, {})
-                cache_key = f"{CACHED_API_KEY}{config_entry.entry_id}"
-                hass.data[DOMAIN][cache_key] = api
-                _LOGGER.debug("Cached authenticated API with key %s", cache_key)
+                hass.data[DOMAIN][f"{CACHED_API_KEY}{config_entry.entry_id}"] = api
 
                 _LOGGER.info(
                     "Migrated config entry to use specific plant_id '%s'",
@@ -178,52 +212,53 @@ async def async_migrate_entry(
     return True
 
 
-def get_device_list_classic(
-    api: growattServer.GrowattApi, config: Mapping[str, str]
-) -> tuple[list[dict[str, str]], str]:
-    """Retrieve the device list for the selected plant."""
-    plant_id = config[CONF_PLANT_ID]
+async def _create_api_and_login(
+    hass: HomeAssistant, username: str, password: str, url: str
+) -> tuple[growattServer.GrowattApi, dict]:
+    """Create API instance and perform login.
 
-    # Log in to api and fetch first plant if no plant id is defined.
+    Returns both the API instance (with authenticated session) and the login
+    response (containing user_id needed for subsequent API calls).
+
+    """
+    api = growattServer.GrowattApi(add_random_user_id=True, agent_identifier=username)
+    api.server_url = url
+
+    login_response = await hass.async_add_executor_job(
+        _login_classic_api, api, username, password
+    )
+
+    return api, login_response
+
+
+def _login_classic_api(
+    api: growattServer.GrowattApi, username: str, password: str
+) -> dict:
+    """Log in to Classic API and return user info."""
     try:
-        login_response = api.login(config[CONF_USERNAME], config[CONF_PASSWORD])
+        login_response = api.login(username, password)
     except (RequestException, JSONDecodeError) as ex:
         raise ConfigEntryError(
-            f"Error communicating with Growatt API during login: {ex}"
+            translation_domain=DOMAIN,
+            translation_key="communication_error",
+            translation_placeholders={"error": str(ex)},
         ) from ex
 
     if not login_response.get("success"):
         msg = login_response.get("msg", "Unknown error")
         _LOGGER.debug("Growatt login failed: %s", msg)
         if msg == LOGIN_INVALID_AUTH_CODE:
-            raise ConfigEntryAuthFailed("Username, Password or URL may be incorrect!")
-        raise ConfigEntryError(f"Growatt login failed: {msg}")
-
-    user_id = login_response["user"]["id"]
-
-    # Legacy support: DEFAULT_PLANT_ID ("0") triggers auto-selection of first plant.
-    # Modern config flow always sets a specific plant_id, but old config entries
-    # from earlier versions may still have plant_id="0".
-    if plant_id == DEFAULT_PLANT_ID:
-        try:
-            plant_info = api.plant_list(user_id)
-        except (RequestException, JSONDecodeError) as ex:
-            raise ConfigEntryError(
-                f"Error communicating with Growatt API during plant list: {ex}"
-            ) from ex
-        if not plant_info or "data" not in plant_info or not plant_info["data"]:
-            raise ConfigEntryError("No plants found for this account.")
-        plant_id = plant_info["data"][0]["plantId"]
-
-    # Get a list of devices for specified plant to add sensors for.
-    try:
-        devices = api.device_list(plant_id)
-    except (RequestException, JSONDecodeError) as ex:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="invalid_credentials",
+            )
         raise ConfigEntryError(
-            f"Error communicating with Growatt API during device list: {ex}"
-        ) from ex
+            translation_domain=DOMAIN,
+            translation_key="login_failed",
+            translation_placeholders={"message": msg},
+        )
 
-    return devices, plant_id
+    return login_response
 
 
 def get_device_list_v1(
@@ -231,16 +266,33 @@ def get_device_list_v1(
 ) -> tuple[list[dict[str, str]], str]:
     """Device list logic for Open API V1.
 
-    Note: Plant selection (including auto-selection if only one plant exists)
-    is handled in the config flow before this function is called. This function
-    only fetches devices for the already-selected plant_id.
+    Plant selection is handled in the config flow before this function is called.
+    This function expects a specific plant_id and fetches devices for that plant.
+
     """
     plant_id = config[CONF_PLANT_ID]
     try:
         devices_dict = api.device_list(plant_id)
     except growattServer.GrowattV1ApiError as e:
+        if e.error_code == GrowattV1ApiErrorCode.NO_PRIVILEGE:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+                translation_placeholders={"error": e.error_msg or str(e)},
+            ) from e
+        if e.error_code == GrowattV1ApiErrorCode.RATE_LIMITED:
+            raise ConfigEntryNotReady(
+                translation_domain=DOMAIN,
+                translation_key="rate_limited",
+                translation_placeholders={"error": e.error_msg or str(e)},
+            ) from e
         raise ConfigEntryError(
-            f"API error during device list: {e} (Code: {getattr(e, 'error_code', None)}, Message: {getattr(e, 'error_msg', None)})"
+            translation_domain=DOMAIN,
+            translation_key="api_error_with_code",
+            translation_placeholders={
+                "error": e.error_msg or str(e),
+                "code": str(e.error_code),
+            },
         ) from e
     devices = devices_dict.get("devices", [])
     supported_devices = [
@@ -262,187 +314,10 @@ def get_device_list_v1(
     return supported_devices, plant_id
 
 
-def get_device_list(
-    api, config: Mapping[str, str], api_version: str
-) -> tuple[list[dict[str, str]], str]:
-    """Dispatch to correct device list logic based on API version."""
-    if api_version == "v1":
-        return get_device_list_v1(api, config)
-    if api_version == "classic":
-        return get_device_list_classic(api, config)
-    # Defensive: api_version is hardcoded in async_setup_entry as "v1" or "classic"
-    # This line is unreachable through normal execution but kept as a safeguard
-    raise ConfigEntryError(f"Unknown API version: {api_version}")  # pragma: no cover
-
-
-async def _setup_coordinators_and_platforms(
-    hass: HomeAssistant,
-    config_entry: GrowattConfigEntry,
-    api,
-    api_version: str,
-    throttle_manager,
-) -> None:
-    """Set up coordinators and platforms (common logic for immediate and delayed setup)."""
-    config = config_entry.data
-
-    # Get device list (with throttling for Classic API)
-    if api_version == "classic":
-        devices, plant_id = await throttle_manager.throttled_call(
-            get_device_list_classic, api, config
-        )
-    else:
-        devices, plant_id = await hass.async_add_executor_job(
-            get_device_list, api, config, api_version
-        )
-
-    # Store API in runtime_data early so coordinators can access it
-    config_entry.runtime_data = GrowattRuntimeData(
-        api=api,
-        total_coordinator=None,  # type: ignore[arg-type]
-        devices={},
-    )
-
-    # Create coordinators
-    total_coordinator = GrowattCoordinator(
-        hass, config_entry, plant_id, "total", plant_id
-    )
-
-    device_coordinators = {
-        device["deviceSn"]: GrowattCoordinator(
-            hass,
-            config_entry,
-            device["deviceSn"],
-            device["deviceType"],
-            plant_id,
-        )
-        for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
-    }
-
-    # Perform first refresh
-    await total_coordinator.async_config_entry_first_refresh()
-    for device_coordinator in device_coordinators.values():
-        await device_coordinator.async_config_entry_first_refresh()
-
-    # Update runtime data with coordinators
-    config_entry.runtime_data = GrowattRuntimeData(
-        api=api,
-        total_coordinator=total_coordinator,
-        devices=device_coordinators,
-    )
-
-    # Set up all the entities
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-
-
-def _format_time(minutes: float) -> str:
-    """Format minutes as human-readable time string."""
-    if minutes < 1:
-        seconds = int(minutes * 60)
-        return f"{seconds} seconds"
-    mins = int(minutes)
-    secs = int((minutes - mins) * 60)
-    if mins > 0 and secs > 0:
-        return f"{mins}:{secs:02d}"
-    if mins > 0:
-        return f"{mins} minute{'s' if mins != 1 else ''}"
-    return f"{secs} seconds"
-
-
-async def _handle_throttled_setup(
-    hass: HomeAssistant,
-    config_entry: GrowattConfigEntry,
-    api,
-    api_version: str,
-    throttle_manager,
-    minutes_remaining: float,
-) -> None:
-    """Handle setup when throttled - wait and then complete setup."""
-    _LOGGER.warning(
-        "Setup throttled - need to wait %.1f more minutes (entry_id: %s)",
-        minutes_remaining,
-        config_entry.entry_id,
-    )
-
-    time_str = _format_time(minutes_remaining)
-    persistent_notification.async_create(
-        hass,
-        f"🛡️ **Growatt API Rate Limited - Auto-retry in {time_str}**\n\n"
-        f"This protects your account from being locked out. "
-        f"Setup will continue automatically - no restart needed.\n\n"
-        f"⏰ **Wait Time:** {time_str} remaining\n"
-        f"🔄 **Status:** Waiting for rate limit cooldown\n"
-        f"✅ **Action:** Nothing required - automatic retry",
-        title="Growatt Server - Rate Limited",
-        notification_id=f"growatt_throttle_{config_entry.entry_id}",
-    )
-
-    # Create placeholder runtime data to avoid errors during throttling
-    config_entry.runtime_data = GrowattRuntimeData(
-        api=api,
-        total_coordinator=None,  # type: ignore[arg-type]
-        devices={},
-    )
-
-    async def delayed_setup():
-        """Wait for throttle period and complete setup."""
-        remaining_seconds = minutes_remaining * 60
-
-        # Wait with live countdown updates
-        while remaining_seconds > 0:
-            wait_chunk = min(30, remaining_seconds)
-            await asyncio.sleep(wait_chunk)
-            remaining_seconds -= wait_chunk
-
-            if remaining_seconds > 0:
-                remaining_minutes = remaining_seconds / 60
-                time_str = _format_time(remaining_minutes)
-                persistent_notification.async_create(
-                    hass,
-                    f"🛡️ **Growatt API Rate Limited - Auto-retry in {time_str}**\n\n"
-                    f"Setup will continue automatically - no restart needed.\n\n"
-                    f"⏰ **Wait Time:** {time_str} remaining\n"
-                    f"🔄 **Status:** Waiting for rate limit cooldown",
-                    title="Growatt Server - Rate Limited",
-                    notification_id=f"growatt_throttle_{config_entry.entry_id}",
-                )
-
-        # Dismiss notification
-        persistent_notification.async_dismiss(
-            hass, f"growatt_throttle_{config_entry.entry_id}"
-        )
-
-        _LOGGER.info(
-            "Throttle period expired, completing setup (entry_id: %s)",
-            config_entry.entry_id,
-        )
-
-        try:
-            await _setup_coordinators_and_platforms(
-                hass, config_entry, api, api_version, throttle_manager
-            )
-            _LOGGER.info(
-                "Successfully completed delayed setup for Growatt integration (entry_id: %s)",
-                config_entry.entry_id,
-            )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to complete delayed setup: %s", err)
-            persistent_notification.async_create(
-                hass,
-                f"⚠️ **Growatt Setup Failed**\n\nError: {err}\n\nPlease disable and re-enable the integration.",
-                title="Growatt Server - Setup Error",
-                notification_id=f"growatt_error_{config_entry.entry_id}",
-            )
-
-    # Start the delayed setup task
-    hass.async_create_task(delayed_setup())
-
-
 async def async_setup_entry(
     hass: HomeAssistant, config_entry: GrowattConfigEntry
 ) -> bool:
     """Set up Growatt from a config entry."""
-    _LOGGER.debug("async_setup_entry called for entry_id=%s", config_entry.entry_id)
 
     config = config_entry.data
     url = config.get(CONF_URL, DEFAULT_URL)
@@ -454,44 +329,26 @@ async def async_setup_entry(
         new_data[CONF_URL] = url
         hass.config_entries.async_update_entry(config_entry, data=new_data)
 
-    # Migrate legacy config entries without auth_type field
-    if CONF_AUTH_TYPE not in config:
-        new_data = dict(config_entry.data)
-        # Detect auth type based on which fields are present
-        if CONF_TOKEN in config:
-            new_data[CONF_AUTH_TYPE] = AUTH_API_TOKEN
-        elif CONF_USERNAME in config:
-            new_data[CONF_AUTH_TYPE] = AUTH_PASSWORD
-        else:
-            raise ConfigEntryError(
-                "Unable to determine authentication type from config entry."
-            )
-        hass.config_entries.async_update_entry(config_entry, data=new_data)
-        config = config_entry.data
-
-    # Determine API version and get API instance
+    # Determine API version and get devices
     # Note: auth_type field is guaranteed to exist after migration
     if config.get(CONF_AUTH_TYPE) == AUTH_API_TOKEN:
         # V1 API (token-based, no login needed)
         token = config[CONF_TOKEN]
         api = growattServer.OpenApiV1(token=token)
-        plant_id = config[CONF_PLANT_ID]
+        api.server_url = url
+        devices, plant_id = await hass.async_add_executor_job(
+            get_device_list_v1, api, config
+        )
     elif config.get(CONF_AUTH_TYPE) == AUTH_PASSWORD:
         # Classic API (username/password with login)
         username = config[CONF_USERNAME]
         password = config[CONF_PASSWORD]
-        plant_id = config[CONF_PLANT_ID]
 
         # Check if migration cached an authenticated API instance for us to reuse.
         # This avoids calling login() twice (once in migration, once here) which
         # would trigger rate limiting.
-        cache_key = f"{CACHED_API_KEY}{config_entry.entry_id}"
-        cached_api = hass.data.get(DOMAIN, {}).pop(cache_key, None)
-
-        _LOGGER.debug(
-            "Checking for cached API with key %s: %s",
-            cache_key,
-            "found" if cached_api else "not found",
+        cached_api = hass.data.get(DOMAIN, {}).pop(
+            f"{CACHED_API_KEY}{config_entry.entry_id}", None
         )
 
         if cached_api:
@@ -500,69 +357,141 @@ async def async_setup_entry(
             _LOGGER.debug("Reusing logged-in session from migration")
         else:
             # No cached API (normal setup or migration didn't run)
-            # Create and login to API
-            api = growattServer.GrowattApi(
-                add_random_user_id=True, agent_identifier=username
-            )
-            api.server_url = url
-            login_response = await hass.async_add_executor_job(
-                api.login, username, password
-            )
-            if not login_response.get("success"):
-                raise ConfigEntryAuthFailed("Login failed")
+            # Create new API instance and login
+            api, _ = await _create_api_and_login(hass, username, password, url)
+
+        # Get plant_id and devices using the authenticated session
+        plant_id = config[CONF_PLANT_ID]
+        try:
+            devices = await hass.async_add_executor_job(api.device_list, plant_id)
+        except (RequestException, JSONDecodeError) as ex:
+            raise ConfigEntryError(
+                translation_domain=DOMAIN,
+                translation_key="communication_error",
+                translation_placeholders={"error": str(ex)},
+            ) from ex
     else:
-        raise ConfigEntryError("Unknown authentication type in config entry.")
-
-    # Store API in runtime_data IMMEDIATELY so coordinators can access it
-    # This ensures all coordinators share the same logged-in API instance
-    config_entry.runtime_data = GrowattRuntimeData(
-        api=api,
-        total_coordinator=None,  # Will be set below
-        devices={},  # Will be populated below
-    )
-
-    # Get device list using the authenticated API (via throttle if Classic API)
-    if config.get(CONF_AUTH_TYPE) == AUTH_API_TOKEN:
-        devices, plant_id = await hass.async_add_executor_job(
-            get_device_list_v1, api, config
+        raise ConfigEntryError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_auth_type",
         )
-    else:
-        # Classic API: Use throttle manager to prevent rate limiting
-        devices = await hass.async_add_executor_job(api.device_list, plant_id)
 
     # Create a coordinator for the total sensors
     total_coordinator = GrowattCoordinator(
         hass, config_entry, plant_id, "total", plant_id
     )
 
-    # Create coordinators for individual devices
+    # Create coordinators for each device
     device_coordinators = {
         device["deviceSn"]: GrowattCoordinator(
-            hass,
-            config_entry,
-            device["deviceSn"],
-            device["deviceType"],
-            plant_id,
+            hass, config_entry, device["deviceSn"], device["deviceType"], plant_id
         )
         for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
+        if device["deviceType"] in SUPPORTED_DEVICE_TYPES
     }
 
-    # Update runtime_data with coordinators
+    # Perform the first refresh for the total coordinator
+    await total_coordinator.async_config_entry_first_refresh()
+
+    # Perform the first refresh for each device coordinator
+    for device_coordinator in device_coordinators.values():
+        await device_coordinator.async_config_entry_first_refresh()
+
+    # Store runtime data in the config entry
     config_entry.runtime_data = GrowattRuntimeData(
-        api=api,
         total_coordinator=total_coordinator,
         devices=device_coordinators,
     )
 
-    # Perform initial refresh for all coordinators
-    await total_coordinator.async_config_entry_first_refresh()
-
-    for coordinator in device_coordinators.values():
-        await coordinator.async_config_entry_first_refresh()
-
-    # Forward the setup to the sensor platform
+    # Set up all the entities
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    async def _async_scan_for_new_devices(_now: datetime.datetime) -> None:
+        """Scan for new or removed devices and update HA accordingly."""
+        # Fetch current config (in case it was updated via reauth or options)
+        current_plant_id = config_entry.data[CONF_PLANT_ID]
+
+        total_coordinator = config_entry.runtime_data.total_coordinator
+        # Signal the coordinator to also fetch the device list on its next
+        # _sync_update_data run, then force an immediate refresh.  This keeps
+        # the device_list call in the same executor thread as the existing
+        # login() + plant-overview call, so for Classic API there is no extra
+        # login and no thread-safety concern with the shared session.
+        total_coordinator.request_device_list_scan()
+        await total_coordinator.async_refresh()
+
+        if not total_coordinator.last_update_success:
+            _LOGGER.debug("Coordinator refresh failed during device scan, skipping")
+            return
+
+        current_devices = total_coordinator.device_list
+        if current_devices is None:
+            _LOGGER.debug(
+                "Device list not populated after coordinator refresh, skipping scan"
+            )
+            return
+
+        runtime_data = config_entry.runtime_data
+        current_device_sns = {device["deviceSn"] for device in current_devices}
+
+        # Remove stale devices
+        device_registry = dr.async_get(hass)
+        for device_entry in dr.async_entries_for_config_entry(
+            device_registry, config_entry.entry_id
+        ):
+            device_domain_ids = {
+                identifier[1]
+                for identifier in device_entry.identifiers
+                if identifier[0] == DOMAIN
+            }
+            if not device_domain_ids:
+                continue
+            # Skip the plant "total" device
+            if current_plant_id in device_domain_ids:
+                continue
+            if device_domain_ids.isdisjoint(current_device_sns):
+                for device_sn in device_domain_ids:
+                    if coordinator := runtime_data.devices.pop(device_sn, None):
+                        await coordinator.async_shutdown()
+                device_registry.async_remove_device(device_entry.id)
+
+        # Add new devices
+        new_coordinators: list[GrowattCoordinator] = []
+        for device in current_devices:
+            device_sn = device["deviceSn"]
+            device_type = device["deviceType"]
+            if device_sn in runtime_data.devices:
+                continue
+            if device_type not in SUPPORTED_DEVICE_TYPES:
+                _LOGGER.debug(
+                    "New device %s with type %s is not supported, skipping",
+                    device_sn,
+                    device_type,
+                )
+                continue
+            coordinator = GrowattCoordinator(
+                hass, config_entry, device_sn, device_type, current_plant_id
+            )
+            await coordinator.async_refresh()
+            if not coordinator.last_update_success:
+                _LOGGER.debug("Failed to refresh new device %s, skipping", device_sn)
+                await coordinator.async_shutdown()
+                continue
+            runtime_data.devices[device_sn] = coordinator
+            new_coordinators.append(coordinator)
+
+        if new_coordinators:
+            async_dispatcher_send(
+                hass,
+                f"{DOMAIN}_new_device_{config_entry.entry_id}",
+                new_coordinators,
+            )
+
+    config_entry.async_on_unload(
+        async_track_time_interval(
+            hass, _async_scan_for_new_devices, DEVICE_SCAN_INTERVAL
+        )
+    )
 
     return True
 
@@ -571,18 +500,4 @@ async def async_unload_entry(
     hass: HomeAssistant, config_entry: GrowattConfigEntry
 ) -> bool:
     """Unload a config entry."""
-    # Only try to unload platforms if they were actually loaded
-    # This prevents errors when setup failed or was delayed due to throttling
-    if (
-        hasattr(config_entry, "runtime_data")
-        and config_entry.runtime_data is not None
-        and config_entry.runtime_data.total_coordinator is not None
-    ):
-        return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
-
-    # No platforms were loaded, so unload is automatically successful
-    _LOGGER.debug(
-        "No platforms to unload for entry %s (setup never completed or was throttled)",
-        config_entry.entry_id,
-    )
-    return True
+    return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)

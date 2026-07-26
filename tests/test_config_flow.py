@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from homeassistant import config_entries
-from homeassistant.components.growatt_server.const import (
+from custom_components.growatt_server.const import (
     ABORT_NO_PLANTS,
     AUTH_API_TOKEN,
     AUTH_PASSWORD,

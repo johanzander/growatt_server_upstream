@@ -34,7 +34,7 @@ async def test_min_sensors_v1_api(
         "devices": [{"device_sn": "MIN123456", "type": 7}]
     }
 
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
@@ -53,7 +53,7 @@ async def test_sph_sensors_v1_api(
         "devices": [{"device_sn": "SPH123456", "type": 5}]
     }
 
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
@@ -87,7 +87,7 @@ async def test_sensors_classic_api(
     # Device detail methods (inverter_detail, storage_detail, mix_detail, tlx_detail)
     # are already configured in the default mock_growatt_classic_api fixture
 
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry_classic)
 
     await snapshot_platform(
@@ -102,7 +102,7 @@ async def test_sensor_coordinator_updates(
     freezer: FrozenDateTimeFactory,
 ) -> None:
     """Test sensors update when coordinator refreshes."""
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     # Verify sensor exists
@@ -135,7 +135,7 @@ async def test_sensor_unavailable_on_coordinator_error(
     freezer: FrozenDateTimeFactory,
 ) -> None:
     """Test sensors become unavailable when coordinator fails."""
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     # Verify sensor is initially available
@@ -145,7 +145,7 @@ async def test_sensor_unavailable_on_coordinator_error(
 
     # Cause coordinator update to fail
     mock_growatt_v1_api.min_detail.side_effect = growattServer.GrowattV1ApiError(
-        "Connection timeout"
+        "Connection timeout", error_code=1, error_msg="Connection timeout"
     )
 
     # Trigger coordinator refresh
@@ -170,7 +170,7 @@ async def test_midnight_bounce_suppression(
     The Growatt API sometimes delivers stale yesterday values after a midnight
     reset (9.5 → 0 → 9.5 → 0), causing TOTAL_INCREASING double-counting.
     """
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     entity_id = "sensor.test_plant_total_energy_today"
@@ -245,7 +245,7 @@ async def test_normal_reset_no_bounce(
     freezer: FrozenDateTimeFactory,
 ) -> None:
     """Test that normal midnight reset without bounce passes through correctly."""
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     entity_id = "sensor.test_plant_total_energy_today"
@@ -314,7 +314,7 @@ async def test_midnight_bounce_repeated(
     freezer: FrozenDateTimeFactory,
 ) -> None:
     """Test multiple consecutive stale bounces are all suppressed."""
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     entity_id = "sensor.test_plant_total_energy_today"
@@ -415,7 +415,7 @@ async def test_non_total_increasing_sensor_unaffected_by_bounce_suppression(
     The total_energy_output sensor (totalEnergy) has state_class=TOTAL,
     so bounce suppression (which only targets TOTAL_INCREASING) should not apply.
     """
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry)
 
     # total_energy_output uses state_class=TOTAL (not TOTAL_INCREASING)
@@ -467,7 +467,7 @@ async def test_total_sensors_classic_api(
         {"deviceSn": "TLX123456", "deviceType": "tlx"}
     ]
 
-    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+    with patch("custom_components.growatt_server.PLATFORMS", [Platform.SENSOR]):
         await setup_integration(hass, mock_config_entry_classic)
 
     await snapshot_platform(

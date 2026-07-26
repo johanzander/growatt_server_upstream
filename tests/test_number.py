@@ -8,7 +8,7 @@ from growattServer import GrowattV1ApiError
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.components.growatt_server.coordinator import SCAN_INTERVAL
+from custom_components.growatt_server.coordinator import SCAN_INTERVAL
 from homeassistant.components.number import (
     ATTR_VALUE,
     DOMAIN as NUMBER_DOMAIN,
@@ -32,7 +32,7 @@ DOMAIN = "growatt_server"
 async def number_only() -> AsyncGenerator[None]:
     """Enable only the number platform."""
     with patch(
-        "homeassistant.components.growatt_server.PLATFORMS",
+        "custom_components.growatt_server.PLATFORMS",
         [Platform.NUMBER],
     ):
         yield
@@ -56,7 +56,7 @@ async def test_set_number_value_api_error(
 ) -> None:
     """Test handling API error when setting number value."""
     # Mock API to raise error
-    mock_growatt_v1_api.min_write_parameter.side_effect = GrowattV1ApiError("API Error")
+    mock_growatt_v1_api.min_write_parameter.side_effect = GrowattV1ApiError("API Error", error_code=1, error_msg="API Error")
 
     with pytest.raises(HomeAssistantError, match="Error while setting parameter"):
         await hass.services.async_call(
