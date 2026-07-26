@@ -1,13 +1,11 @@
 {
   "domain": "growatt_server",
-  "name": "Growatt Server Upstream",
+  "name": "Growatt",
   "codeowners": ["@johanzander"],
   "config_flow": true,
-  "documentation": "https://github.com/johanzander/growatt_server_upstream",
+  "documentation": "https://www.home-assistant.io/integrations/growatt_server",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/johanzander/growatt_server_upstream/issues",
   "loggers": ["growattServer"],
-  "requirements": ["growattServer==1.9.0"],
-  "version": "2.5.0"
+  "requirements": ["growattServer==1.9.0"]
 }

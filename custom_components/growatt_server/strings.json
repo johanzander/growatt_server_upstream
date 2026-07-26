@@ -24,16 +24,6 @@
         },
         "title": "Select your plant"
       },
-      "reauth_confirm": {
-        "data": {
-          "password": "[%key:common::config_flow::data::password%]",
-          "token": "API Token",
-          "url": "Server region",
-          "username": "[%key:common::config_flow::data::username%]"
-        },
-        "description": "Re-enter your credentials to continue using this integration.",
-        "title": "Re-authenticate with Growatt"
-      },
       "token_auth": {
         "data": {
           "token": "API Token",
@@ -166,9 +156,6 @@
       },
       "mix_import_from_grid_today": {
         "name": "Import from grid today (load)"
-      },
-      "mix_import_from_grid_total": {
-        "name": "Lifetime import from grid"
       },
       "mix_import_from_grid_today_combined": {
         "name": "Import from grid today (load + charging)"

@@ -2,7 +2,6 @@
 
 import logging
 from typing import Any
-from collections.abc import Mapping
 
 import growattServer
 import requests
@@ -59,123 +58,6 @@ class GrowattServerConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_menu(
             step_id="user",
             menu_options=["password_auth", "token_auth"],
-        )
-
-    async def async_step_reauth(
-        self, entry_data: Mapping[str, Any]
-    ) -> ConfigFlowResult:
-        """Handle reauth."""
-        return await self.async_step_reauth_confirm()
-
-    async def async_step_reauth_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle reauth confirmation."""
-        errors: dict[str, str] = {}
-        reauth_entry = self._get_reauth_entry()
-
-        if user_input is not None:
-            auth_type = reauth_entry.data.get(CONF_AUTH_TYPE)
-
-            if auth_type == AUTH_PASSWORD:
-                # Classic API reauth
-                server_url = SERVER_URLS_NAMES[user_input[CONF_REGION]]
-                api = growattServer.GrowattApi(
-                    add_random_user_id=True,
-                    agent_identifier=user_input[CONF_USERNAME],
-                )
-                api.server_url = server_url
-
-                try:
-                    login_response = await self.hass.async_add_executor_job(
-                        api.login, user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
-                    )
-                except requests.exceptions.RequestException:
-                    errors["base"] = ERROR_CANNOT_CONNECT
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    errors["base"] = ERROR_CANNOT_CONNECT
-                else:
-                    if (
-                        not login_response.get("success")
-                        and login_response.get("msg") == LOGIN_INVALID_AUTH_CODE
-                    ):
-                        errors["base"] = ERROR_INVALID_AUTH
-                    else:
-                        return self.async_update_reload_and_abort(
-                            reauth_entry,
-                            data_updates={
-                                CONF_USERNAME: user_input[CONF_USERNAME],
-                                CONF_PASSWORD: user_input[CONF_PASSWORD],
-                                CONF_URL: server_url,
-                            },
-                        )
-
-            elif auth_type == AUTH_API_TOKEN:
-                # V1 API reauth
-                server_url = SERVER_URLS_NAMES[user_input[CONF_REGION]]
-                api = growattServer.OpenApiV1(token=user_input[CONF_TOKEN])
-                api.server_url = server_url
-
-                try:
-                    plant_response = await self.hass.async_add_executor_job(
-                        api.plant_list
-                    )
-                    plant_response.get("plants", [])
-                except requests.exceptions.RequestException:
-                    errors["base"] = ERROR_CANNOT_CONNECT
-                except growattServer.GrowattV1ApiError:
-                    errors["base"] = ERROR_INVALID_AUTH
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    errors["base"] = ERROR_CANNOT_CONNECT
-                else:
-                    return self.async_update_reload_and_abort(
-                        reauth_entry,
-                        data_updates={
-                            CONF_TOKEN: user_input[CONF_TOKEN],
-                            CONF_URL: server_url,
-                        },
-                    )
-
-        # Show form based on auth type
-        auth_type = reauth_entry.data.get(CONF_AUTH_TYPE)
-        if auth_type == AUTH_PASSWORD:
-            data_schema = vol.Schema(
-                {
-                    vol.Required(
-                        CONF_USERNAME, default=reauth_entry.data.get(CONF_USERNAME)
-                    ): str,
-                    vol.Required(CONF_PASSWORD): str,
-                    vol.Required(
-                        CONF_REGION,
-                        default=reauth_entry.data.get(CONF_URL, DEFAULT_URL),
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=list(SERVER_URLS_NAMES.keys()),
-                            translation_key="region",
-                        )
-                    ),
-                }
-            )
-        else:
-            data_schema = vol.Schema(
-                {
-                    vol.Required(CONF_TOKEN): str,
-                    vol.Required(
-                        CONF_REGION,
-                        default=reauth_entry.data.get(CONF_URL, DEFAULT_URL),
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=list(SERVER_URLS_NAMES.keys()),
-                            translation_key="region",
-                        )
-                    ),
-                }
-            )
-
-        return self.async_show_form(
-            step_id="reauth_confirm",
-            data_schema=data_schema,
-            errors=errors,
         )
 
     async def async_step_password_auth(
