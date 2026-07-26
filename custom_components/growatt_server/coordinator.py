@@ -1,20 +1,24 @@
 """Coordinator module for managing Growatt data fetching."""
 
-from __future__ import annotations
-
 import datetime
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import growattServer
+from growattServer import GrowattV1ApiErrorCode
+from requests import RequestException
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -23,6 +27,7 @@ from .const import (
     BATT_MODE_GRID_FIRST,
     BATT_MODE_LOAD_FIRST,
     DOMAIN,
+    V1_DEVICE_TYPES,
 )
 from .models import GrowattRuntimeData
 
@@ -37,32 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator to manage Growatt data fetching.
-
-    Rate-limit / cache pattern
-    --------------------------
-    The Growatt cloud API enforces a per-endpoint rate limit of one call every
-    5 minutes.  SCAN_INTERVAL is configured to respect this limit, so
-    *service-action reads must never trigger an extra API call*.
-
-    Rule 1 – reads use the coordinator cache:
-        Service actions that return current settings (e.g. read_time_segments,
-        read_ac_charge_times, read_ac_discharge_times) parse their result from
-        self.data, not from a fresh API call.  If the cache is empty for some
-        reason they call async_refresh() once to populate it.
-
-    Rule 2 – writes update the coordinator cache immediately:
-        After a successful write (e.g. update_time_segment,
-        update_ac_charge_times, update_ac_discharge_times) the relevant fields
-        in self.data are updated in-place and async_set_updated_data() is called.
-        This keeps the cache consistent so that a subsequent read returns the
-        value just written, without waiting for the next poll.
-
-    Trade-off:
-        Because reads are served from the cache, settings changed outside of
-        Home Assistant (e.g. via the Growatt ShinePhone app or the Growatt web
-        portal) will not be reflected until the next scheduled poll.
-    """
+    """Coordinator to manage Growatt data fetching."""
 
     def __init__(
         self,
@@ -81,8 +61,22 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.plant_id = plant_id
         self.previous_values: dict[str, Any] = {}
         self._pre_reset_values: dict[str, float] = {}
+        # Populated during _sync_update_data when request_device_list_scan() was called.
+        # Consumed by _async_scan_for_new_devices to avoid a separate executor job
+        # and the extra login() call that would otherwise be required (Classic API).
+        # Thread safety: written in the executor thread, read on the event loop after
+        # async_refresh() awaits the executor job — ordering guarantees safe access.
+        self.device_list: list[dict[str, str]] | None = None
+        # Flag set on the event loop (request_device_list_scan) and consumed in the
+        # executor thread (_sync_update_data). Bool assignment is atomic under CPython's GIL.
+        self._fetch_device_list: bool = False
 
-        # Use the shared API instance from runtime_data (already logged in for Classic API)
+        # Use the shared, already-authenticated API instance from runtime_data
+        # instead of creating a new one per coordinator. For Classic API this
+        # means the session (and its login) is shared across every coordinator
+        # for this config entry, rather than each one logging in independently
+        # on every scan interval — the latter multiplies login() calls by the
+        # device count on every poll and triggers the Growatt API's rate limit.
         self.api = config_entry.runtime_data.api
 
         super().__init__(
@@ -93,33 +87,111 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry=config_entry,
         )
 
+    def _sync_fetch_device_list(self) -> None:
+        """Fetch the device list for the current plant."""
+        if self.api_version == "v1":
+            try:
+                devices_dict = self.api.device_list(self.plant_id)
+                devices = devices_dict.get("devices", [])
+                self.device_list = [
+                    {
+                        "deviceSn": device.get("device_sn", ""),
+                        "deviceType": V1_DEVICE_TYPES[device.get("type")],
+                    }
+                    for device in devices
+                    if device.get("type") in V1_DEVICE_TYPES
+                ]
+            except growattServer.GrowattV1ApiError as err:
+                if err.error_code == GrowattV1ApiErrorCode.NO_PRIVILEGE:
+                    raise ConfigEntryAuthFailed(
+                        translation_domain=DOMAIN,
+                        translation_key="auth_failed",
+                        translation_placeholders={"error": err.error_msg or str(err)},
+                    ) from err
+                _LOGGER.debug("Failed to fetch V1 device list during scan: %s", err)
+                self.device_list = None
+        else:
+            try:
+                # login() was already called above; reuse the same session.
+                devices = self.api.device_list(self.plant_id)
+                self.device_list = [
+                    {
+                        "deviceSn": device["deviceSn"],
+                        "deviceType": device["deviceType"],
+                    }
+                    for device in devices
+                ]
+            except (
+                RequestException,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+            ) as err:
+                _LOGGER.debug(
+                    "Failed to fetch Classic device list during scan: %s", err
+                )
+                self.device_list = None
+
     def _sync_update_data(self) -> dict[str, Any]:
         """Update data via library synchronously."""
         _LOGGER.debug("Updating data for %s (%s)", self.device_id, self.device_type)
 
-        # No login needed - session persists from __init__ login
+        # Consume the scan flag immediately so it is cleared even if an exception
+        # is raised later in this method.
+        fetch_device_list = self._fetch_device_list
+        self._fetch_device_list = False
+
+        # No login needed here — the shared API instance (self.api, from
+        # runtime_data) already holds an authenticated session for Classic
+        # API. Session expiry is handled reactively by _async_re_login, not
+        # by logging in again on every poll.
 
         if self.device_type == "total":
             if self.api_version == "v1":
-                # The V1 Plant APIs do not provide the same information as the classic plant_info() API
+                # The V1 Plant APIs do not provide the same
+                # information as the classic plant_info() API
                 # More specifically:
-                # 1. There is no monetary information to be found, so today and lifetime money is not available
-                # 2. There is no nominal power, this is provided by inverter min_energy()
-                # This means, for the total coordinator we can only fetch and map the following:
+                # 1. There is no monetary information to be
+                #    found, so today and lifetime money is not
+                #    available
+                # 2. There is no nominal power, this is
+                #    provided by inverter min_energy()
+                # This means, for the total coordinator we can
+                # only fetch and map the following:
                 # todayEnergy -> today_energy
                 # totalEnergy -> total_energy
                 # invTodayPpv -> current_power
-                total_info = self.api.plant_energy_overview(self.plant_id)
+                try:
+                    total_info = self.api.plant_energy_overview(self.plant_id)
+                except growattServer.GrowattV1ApiError as err:
+                    if err.error_code == GrowattV1ApiErrorCode.NO_PRIVILEGE:
+                        raise ConfigEntryAuthFailed(
+                            translation_domain=DOMAIN,
+                            translation_key="auth_failed",
+                            translation_placeholders={
+                                "error": err.error_msg or str(err)
+                            },
+                        ) from err
+                    raise UpdateFailed(
+                        translation_domain=DOMAIN,
+                        translation_key="fetch_data_failed",
+                        translation_placeholders={"error": str(err)},
+                    ) from err
                 total_info["todayEnergy"] = total_info["today_energy"]
                 total_info["totalEnergy"] = total_info["total_energy"]
-                total_info["invTodayPpv"] = total_info["current_power"]
+                # V1 API returns current_power in kW, convert to W
+                total_info["invTodayPpv"] = total_info["current_power"] * 1000
             else:
-                # Classic API: use plant_info as before
-                total_info = self.api.plant_info(self.device_id)
+                # Classic API: use plant_info as before.
+                # Copy the response to avoid mutating the dict returned by the library
+                # (important for test mocks, harmless in production).
+                total_info = dict(self.api.plant_info(self.device_id))
                 del total_info["deviceList"]
                 plant_money_text, currency = total_info["plantMoneyText"].split("/")
                 total_info["plantMoneyText"] = plant_money_text
                 total_info["currency"] = currency
+            if fetch_device_list:
+                self._sync_fetch_device_list()
             _LOGGER.debug("Total info for plant %s: %r", self.plant_id, total_info)
             self.data = total_info
         elif self.device_type == "inverter":
@@ -131,25 +203,52 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 min_settings = self.api.min_settings(self.device_id)
                 min_energy = self.api.min_energy(self.device_id)
             except growattServer.GrowattV1ApiError as err:
-                raise UpdateFailed(f"Error fetching min device data: {err}") from err
+                if err.error_code == GrowattV1ApiErrorCode.NO_PRIVILEGE:
+                    raise ConfigEntryAuthFailed(
+                        translation_domain=DOMAIN,
+                        translation_key="auth_failed",
+                        translation_placeholders={"error": err.error_msg or str(err)},
+                    ) from err
+                raise UpdateFailed(
+                    translation_domain=DOMAIN,
+                    translation_key="fetch_data_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
 
             min_info = {**min_details, **min_settings, **min_energy}
             self.data = min_info
             _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
+        elif self.device_type == "tlx":
+            tlx_info = self.api.tlx_detail(self.device_id)
+            self.data = tlx_info["data"]
+            _LOGGER.debug("tlx_info for device %s: %r", self.device_id, tlx_info)
+        elif self.device_type == "storage":
+            storage_info_detail = self.api.storage_params(self.device_id)
+            storage_energy_overview = self.api.storage_energy_overview(
+                self.plant_id, self.device_id
+            )
+            self.data = {
+                **storage_info_detail["storageDetailBean"],
+                **storage_energy_overview,
+            }
         elif self.device_type == "sph":
-            # Open API V1: SPH device (single-phase hybrid)
             try:
                 sph_detail = self.api.sph_detail(self.device_id)
                 sph_energy = self.api.sph_energy(self.device_id)
             except growattServer.GrowattV1ApiError as err:
-                raise UpdateFailed(f"Error fetching SPH device data: {err}") from err
+                if err.error_code == GrowattV1ApiErrorCode.NO_PRIVILEGE:
+                    raise ConfigEntryAuthFailed(
+                        translation_domain=DOMAIN,
+                        translation_key="auth_failed",
+                        translation_placeholders={"error": err.error_msg or str(err)},
+                    ) from err
+                raise UpdateFailed(
+                    translation_domain=DOMAIN,
+                    translation_key="fetch_data_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
 
             combined = {**sph_detail, **sph_energy}
-
-            # TODO: remove coordinator W→kW conversion once growattServer normalises
-            # SPH discharge power units (pdischarge1 is in W; no native kW field in V1 API).
-            if "pdischarge1" in combined:
-                combined["pdischarge1KW"] = combined["pdischarge1"] / 1000
 
             # Parse last update timestamp from sph_energy "time" field
             time_str = sph_energy.get("time")
@@ -168,19 +267,6 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             self.data = combined
             _LOGGER.debug("sph_info for device %s: %r", self.device_id, self.data)
-        elif self.device_type == "tlx":
-            tlx_info = self.api.tlx_detail(self.device_id)
-            self.data = tlx_info["data"]
-            _LOGGER.debug("tlx_info for device %s: %r", self.device_id, tlx_info)
-        elif self.device_type == "storage":
-            storage_info_detail = self.api.storage_params(self.device_id)
-            storage_energy_overview = self.api.storage_energy_overview(
-                self.plant_id, self.device_id
-            )
-            self.data = {
-                **storage_info_detail["storageDetailBean"],
-                **storage_energy_overview,
-            }
         elif self.device_type == "mix":
             mix_info = self.api.mix_info(self.device_id)
             mix_totals = self.api.mix_totals(self.device_id, self.plant_id)
@@ -193,14 +279,15 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mix_chart_entries = mix_detail["chartData"]
             sorted_keys = sorted(mix_chart_entries)
 
-            # Create datetime from the latest entry
-            date_now = dt_util.now().date()
-            last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
-            mix_detail["lastdataupdate"] = datetime.datetime.combine(
-                date_now,
-                last_updated_time,  # type: ignore[arg-type]
-                dt_util.get_default_time_zone(),
-            )
+            if sorted_keys:
+                # Create datetime from the latest entry
+                date_now = dt_util.now().date()
+                last_updated_time = dt_util.parse_time(str(sorted_keys[-1]))
+                mix_detail["lastdataupdate"] = datetime.datetime.combine(
+                    date_now,
+                    last_updated_time,  # type: ignore[arg-type]
+                    dt_util.get_default_time_zone(),
+                )
 
             # Dashboard data for mix system
             dashboard_data = self.api.dashboard_data(self.plant_id)
@@ -259,33 +346,30 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 return False
 
-            try:
-                login_response = await self.hass.async_add_executor_job(
-                    self.api.login, username, password
+            login_response = await self.hass.async_add_executor_job(
+                self.api.login, username, password
+            )
+            if login_response.get("success"):
+                runtime_data.last_login_time = now
+                _LOGGER.info(
+                    "Successfully re-authenticated with Growatt API (triggered by %s)",
+                    self.device_id,
                 )
-                if login_response.get("success"):
-                    runtime_data.last_login_time = now
-                    _LOGGER.info(
-                        "Successfully re-authenticated with Growatt API "
-                        "(triggered by %s)",
-                        self.device_id,
-                    )
-                    return True
-                _LOGGER.error(
-                    "Re-login failed: %s",
-                    login_response.get("msg", "Unknown error"),
-                )
-                return False
-            except Exception as err:
-                _LOGGER.error("Re-login exception: %s", err)
-                return False
+                return True
+            _LOGGER.error(
+                "Re-login failed: %s", login_response.get("msg", "Unknown error")
+            )
+            return False
 
+    @override
     async def _async_update_data(self) -> dict[str, Any]:
         """Asynchronously update data via library."""
         try:
             return await self.hass.async_add_executor_job(self._sync_update_data)
         except json.decoder.JSONDecodeError as err:
-            # Session expired — server returned HTML login page instead of JSON
+            # Session expired — server returned an HTML login page instead of
+            # JSON. Try a single re-login + retry before giving up (Classic
+            # API only; V1 API is token-based and stateless).
             if self.api_version == "classic":
                 _LOGGER.warning(
                     "Data fetch failed for %s (%s: %s), attempting re-login",
@@ -300,9 +384,24 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         )
                     except json.decoder.JSONDecodeError as retry_err:
                         raise UpdateFailed(
-                            f"Data fetch failed after re-login: {retry_err}"
+                            translation_domain=DOMAIN,
+                            translation_key="fetch_data_failed",
+                            translation_placeholders={"error": str(retry_err)},
                         ) from retry_err
-            raise UpdateFailed(f"Error fetching data: {err}") from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="fetch_data_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
+    def request_device_list_scan(self) -> None:
+        """Request that the next _sync_update_data also fetches the device list.
+
+        Setting this flag before async_refresh() keeps the device_list call in
+        the same executor thread as the existing login() + plant-overview fetch,
+        so no extra login is needed and there is no thread-safety concern.
+        """
+        self._fetch_device_list = True
 
     def get_currency(self):
         """Get the currency."""
@@ -310,7 +409,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_data(
         self, entity_description: GrowattSensorEntityDescription
-    ) -> str | int | float | None:
+    ) -> str | int | float | datetime.datetime | datetime.date | None:
         """Get the data."""
         variable = entity_description.api_key
         api_value = self.data.get(variable)
@@ -388,6 +487,13 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if current_val == pre_reset:
                     # Value equals yesterday's final value — the API is
                     # serving a stale cached response (bounce)
+                    _LOGGER.debug(
+                        "Suppressing midnight bounce for %s: stale value %s matches "
+                        "pre-reset value, keeping %s",
+                        variable,
+                        current_val,
+                        previous_value,
+                    )
                     return_value = previous_value
                 elif current_val > 0:
                     # Genuine new-day production — clear tracking
@@ -424,12 +530,14 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self.api_version != "v1":
             raise ServiceValidationError(
-                "Updating time segments requires token authentication"
+                translation_domain=DOMAIN,
+                translation_key="token_auth_required",
             )
 
         try:
             # Use V1 API for token authentication
-            # The library's _process_response will raise GrowattV1ApiError if error_code != 0
+            # The library's _process_response will raise
+            # GrowattV1ApiError if error_code != 0
             await self.hass.async_add_executor_job(
                 self.api.min_write_time_segment,
                 self.device_id,
@@ -440,9 +548,14 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 enabled,
             )
         except growattServer.GrowattV1ApiError as err:
-            raise HomeAssistantError(f"API error updating time segment: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
-        # Update coordinator's cached data without making an API call (avoids rate limit)
+        # Update coordinator's cached data without making an
+        # API call (avoids rate limit)
         if self.data:
             # Update the time segment data in the cache
             self.data[f"forcedTimeStart{segment_id}"] = start_time.strftime("%H:%M")
@@ -463,7 +576,8 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self.api_version != "v1":
             raise ServiceValidationError(
-                "Reading time segments requires token authentication"
+                translation_domain=DOMAIN,
+                translation_key="token_auth_required",
             )
 
         # Ensure we have current data
@@ -520,15 +634,16 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "enabled": enabled,
         }
 
-    @staticmethod
-    def _safe_int(value: Any, default: int) -> int:
-        """Parse a potentially null/empty API value to int, returning default on failure."""
-        if value in ("null", None, ""):
-            return default
+    def _format_time(self, time_raw: str) -> str:
+        """Format time string to HH:MM format."""
         try:
-            return int(value)
-        except (ValueError, TypeError):
-            return default
+            parts = str(time_raw).split(":")
+            hour = int(parts[0])
+            minute = int(parts[1])
+        except (ValueError, IndexError):
+            return "00:00"
+        else:
+            return f"{hour:02d}:{minute:02d}"
 
     async def update_ac_charge_times(
         self,
@@ -537,21 +652,19 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         mains_enabled: bool,
         periods: list[dict],
     ) -> None:
-        """Update AC charge time periods for an SPH inverter.
+        """Update AC charge time periods for SPH device.
 
         Args:
-            charge_power: Charging power percentage (0-100)
-            charge_stop_soc: Stop charging at this SOC percentage (0-100)
-            mains_enabled: Whether grid/mains charging is enabled
-            periods: List of 3 period dicts with start_time, end_time, enabled keys
+            charge_power: Charge power limit (0-100 %)
+            charge_stop_soc: Stop charging at this SOC level (0-100 %)
+            mains_enabled: Whether AC (mains) charging is enabled
+            periods: List of up to 3 dicts with keys start_time, end_time, enabled
         """
-        _LOGGER.debug(
-            "Updating AC charge times for device %s (power=%d, stop_soc=%d, mains=%s)",
-            self.device_id,
-            charge_power,
-            charge_stop_soc,
-            mains_enabled,
-        )
+        if self.api_version != "v1":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="token_auth_required",
+            )
 
         try:
             await self.hass.async_add_executor_job(
@@ -564,10 +677,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except growattServer.GrowattV1ApiError as err:
             raise HomeAssistantError(
-                f"API error updating AC charge times: {err}"
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+                translation_placeholders={"error": str(err)},
             ) from err
 
-        # Update coordinator's cached data without making an API call (avoids rate limit)
         if self.data:
             self.data["chargePowerCommand"] = charge_power
             self.data["wchargeSOCLowLimit"] = charge_stop_soc
@@ -579,7 +693,9 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.data[f"forcedChargeTimeStop{i}"] = period["end_time"].strftime(
                     "%H:%M"
                 )
-                self.data[f"forcedChargeStopSwitch{i}"] = 1 if period["enabled"] else 0
+                self.data[f"forcedChargeStopSwitch{i}"] = (
+                    1 if period.get("enabled", False) else 0
+                )
             self.async_set_updated_data(self.data)
 
     async def update_ac_discharge_times(
@@ -588,19 +704,18 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         discharge_stop_soc: int,
         periods: list[dict],
     ) -> None:
-        """Update AC discharge time periods for an SPH inverter.
+        """Update AC discharge time periods for SPH device.
 
         Args:
-            discharge_power: Discharging power percentage (0-100)
-            discharge_stop_soc: Stop discharging at this SOC percentage (0-100)
-            periods: List of 3 period dicts with start_time, end_time, enabled keys
+            discharge_power: Discharge power limit (0-100 %)
+            discharge_stop_soc: Stop discharging at this SOC level (0-100 %)
+            periods: List of up to 3 dicts with keys start_time, end_time, enabled
         """
-        _LOGGER.debug(
-            "Updating AC discharge times for device %s (power=%d, stop_soc=%d)",
-            self.device_id,
-            discharge_power,
-            discharge_stop_soc,
-        )
+        if self.api_version != "v1":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="token_auth_required",
+            )
 
         try:
             await self.hass.async_add_executor_job(
@@ -612,10 +727,11 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except growattServer.GrowattV1ApiError as err:
             raise HomeAssistantError(
-                f"API error updating AC discharge times: {err}"
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+                translation_placeholders={"error": str(err)},
             ) from err
 
-        # Update coordinator's cached data without making an API call (avoids rate limit)
         if self.data:
             self.data["disChargePowerCommand"] = discharge_power
             self.data["wdisChargeSOCLowLimit"] = discharge_stop_soc
@@ -627,39 +743,36 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "%H:%M"
                 )
                 self.data[f"forcedDischargeStopSwitch{i}"] = (
-                    1 if period["enabled"] else 0
+                    1 if period.get("enabled", False) else 0
                 )
             self.async_set_updated_data(self.data)
 
     async def read_ac_charge_times(self) -> dict:
-        """Read AC charge time settings from the coordinator cache.
+        """Read AC charge time settings from SPH device cache."""
+        if self.api_version != "v1":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="token_auth_required",
+            )
 
-        Returns:
-            Dictionary with charge_power, charge_stop_soc, mains_enabled, and periods list
-        """
-        _LOGGER.debug("Reading AC charge times for device %s", self.device_id)
         if not self.data:
             await self.async_refresh()
-        return self.api.sph_read_ac_charge_times(settings_data=self.data)
+
+        return self.api.sph_read_ac_charge_times(
+            self.device_id, settings_data=self.data
+        )
 
     async def read_ac_discharge_times(self) -> dict:
-        """Read AC discharge time settings from the coordinator cache.
+        """Read AC discharge time settings from SPH device cache."""
+        if self.api_version != "v1":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="token_auth_required",
+            )
 
-        Returns:
-            Dictionary with discharge_power, discharge_stop_soc, and periods list
-        """
-        _LOGGER.debug("Reading AC discharge times for device %s", self.device_id)
         if not self.data:
             await self.async_refresh()
-        return self.api.sph_read_ac_discharge_times(settings_data=self.data)
 
-    def _format_time(self, time_raw: str) -> str:
-        """Format time string to HH:MM format."""
-        try:
-            parts = str(time_raw).split(":")
-            hour = int(parts[0])
-            minute = int(parts[1])
-        except (ValueError, IndexError):
-            return "00:00"
-        else:
-            return f"{hour:02d}:{minute:02d}"
+        return self.api.sph_read_ac_discharge_times(
+            self.device_id, settings_data=self.data
+        )

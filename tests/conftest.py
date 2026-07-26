@@ -452,36 +452,3 @@ def mock_setup_entry():
         yield mock
 
 
-@pytest.fixture(autouse=True)
-def mock_throttle_manager(request):
-    """Mock the throttle manager to always allow API calls during tests.
-
-    This fixture is autouse=True so it applies to all tests automatically,
-    except for tests marked with @pytest.mark.no_throttle_mock.
-    The throttle manager will never block API calls during testing.
-    """
-    # Skip mocking for tests that need real throttle behavior
-    if "no_throttle_mock" in request.keywords:
-        yield None
-        return
-
-    with (
-        patch(
-            "custom_components.growatt_server.throttle.ApiThrottleManager.should_throttle",
-            return_value=False,  # Never throttle during tests
-        ),
-        patch(
-            "custom_components.growatt_server.throttle.ApiThrottleManager.throttled_call"
-        ) as mock_throttled_call,
-    ):
-        # Make throttled_call pass through to the actual function
-        async def passthrough_call(func, *args, **kwargs):
-            """Execute the function without throttling."""
-            import asyncio
-
-            if asyncio.iscoroutinefunction(func):
-                return await func(*args, **kwargs)
-            return func(*args, **kwargs)
-
-        mock_throttled_call.side_effect = passthrough_call
-        yield mock_throttled_call
