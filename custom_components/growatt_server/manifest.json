@@ -8,6 +8,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/johanzander/growatt_server_upstream/issues",
   "loggers": ["growattServer"],
-  "requirements": ["growattServer==1.9.0"],
+  "quality_scale": "gold",
+  "requirements": ["growattServer==2.1.0"],
   "version": "2.5.0"
 }
