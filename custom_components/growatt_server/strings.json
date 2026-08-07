@@ -225,13 +225,13 @@
         "name": "All PV wattage"
       },
       "storage_ac_input_frequency_out": {
-        "name": "AC input frequency"
-      },
-      "storage_ac_output_frequency": {
         "name": "AC output frequency"
       },
+      "storage_ac_output_frequency": {
+        "name": "AC input frequency"
+      },
       "storage_battery_percentage": {
-        "name": "Battery percentage"
+        "name": "Battery state of charge"
       },
       "storage_battery_voltage": {
         "name": "Battery voltage"
@@ -267,7 +267,7 @@
         "name": "Grid discharged today"
       },
       "storage_grid_out_current": {
-        "name": "Grid out current"
+        "name": "AC output current"
       },
       "storage_grid_voltage": {
         "name": "AC input voltage"
@@ -288,7 +288,7 @@
         "name": "[%key:component::growatt_server::entity::sensor::mix_load_consumption_lifetime::name%]"
       },
       "storage_load_consumption_solar_storage": {
-        "name": "Load consumption (solar + storage)"
+        "name": "Load apparent power"
       },
       "storage_load_consumption_today": {
         "name": "[%key:component::growatt_server::entity::sensor::mix_load_consumption_today::name%]"
@@ -300,13 +300,13 @@
         "name": "Output voltage"
       },
       "storage_power_flow": {
-        "name": "Storage charging/ discharging(-ve)"
+        "name": "Storage charging power"
       },
       "storage_pv_charging_voltage": {
-        "name": "PV1 charging voltage"
+        "name": "PV1 voltage"
       },
       "storage_pv_charging_voltage_2": {
-        "name": "PV2 charging voltage"
+        "name": "PV2 voltage"
       },
       "storage_solar_output_lifetime": {
         "name": "Lifetime solar output"
@@ -325,6 +325,30 @@
       },
       "storage_storage_production_today": {
         "name": "Storage production today"
+      },
+      "storage_storage_charge_today": {
+        "name": "Storage charged today"
+      },
+      "storage_storage_charge_lifetime": {
+        "name": "Lifetime storage charged"
+      },
+      "storage_storage_discharge_power": {
+        "name": "Storage discharge power"
+      },
+      "storage_storage_discharge_current": {
+        "name": "Storage discharge current"
+      },
+      "storage_battery_temperature": {
+        "name": "Battery temperature"
+      },
+      "storage_inv_temperature": {
+        "name": "Inverter temperature"
+      },
+      "storage_dc_dc_temperature": {
+        "name": "DC/DC temperature"
+      },
+      "storage_dc_bus_voltage": {
+        "name": "DC bus voltage"
       },
       "tlx_all_batteries_charge_today": {
         "name": "All batteries charged today"
