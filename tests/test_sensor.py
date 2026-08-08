@@ -6,6 +6,7 @@ from unittest.mock import patch
 from freezegun.api import FrozenDateTimeFactory
 import growattServer
 import pytest
+from requests.exceptions import ConnectionError as RequestsConnectionError
 from syrupy.assertion import SnapshotAssertion
 
 from homeassistant.const import STATE_UNAVAILABLE, Platform
@@ -473,3 +474,255 @@ async def test_total_sensors_classic_api(
     await snapshot_platform(
         hass, entity_registry, snapshot, mock_config_entry_classic.entry_id
     )
+
+
+async def test_rate_limit_keeps_last_known_data(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test a rate-limited poll keeps the previous reading instead of dropping it.
+
+    One call per endpoint per 5 minutes is a routine condition, not an outage.
+    """
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    entity_id = "sensor.test_plant_total_energy_today"
+    assert hass.states.get(entity_id).state == "12.5"
+
+    mock_growatt_v1_api.plant_energy_overview.side_effect = (
+        growattServer.GrowattV1ApiError(
+            "Error during getting plant energy overview",
+            error_code=10012,
+            error_msg="error_frequently_access",
+        )
+    )
+
+    # The first couple of hits ride it out on the cached value...
+    for _ in range(2):
+        freezer.tick(timedelta(minutes=5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert hass.states.get(entity_id).state == "12.5"
+
+    # ...and only a persistent failure marks the entity unavailable.
+    freezer.tick(timedelta(minutes=5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
+
+
+async def test_transient_network_error_keeps_last_known_data(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test a dropped connection doesn't immediately flip the entities unavailable."""
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    entity_id = "sensor.test_plant_total_energy_today"
+    assert hass.states.get(entity_id).state == "12.5"
+
+    mock_growatt_v1_api.plant_energy_overview.side_effect = RequestsConnectionError(
+        "('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"
+    )
+
+    freezer.tick(timedelta(minutes=5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(entity_id).state == "12.5"
+
+    # A recovery resets the tolerance, so the next blip is ridden out too.
+    mock_growatt_v1_api.plant_energy_overview.side_effect = None
+    mock_growatt_v1_api.plant_energy_overview.return_value = {
+        "today_energy": 13.0,
+        "total_energy": 1250.0,
+        "current_power": 2500,
+    }
+    freezer.tick(timedelta(minutes=5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(entity_id).state == "13.0"
+
+    mock_growatt_v1_api.plant_energy_overview.side_effect = RequestsConnectionError(
+        "Connection reset by peer"
+    )
+    for _ in range(2):
+        freezer.tick(timedelta(minutes=5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert hass.states.get(entity_id).state == "13.0"
+
+
+async def test_non_rate_limit_api_error_fails_immediately(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test a real API error is surfaced at once rather than hidden behind the cache."""
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    entity_id = "sensor.test_plant_total_energy_today"
+    assert hass.states.get(entity_id).state == "12.5"
+
+    mock_growatt_v1_api.plant_energy_overview.side_effect = (
+        growattServer.GrowattV1ApiError(
+            "Error during getting plant energy overview",
+            error_code=10002,
+            error_msg="device serial number is empty",
+        )
+    )
+
+    freezer.tick(timedelta(minutes=5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
+
+
+async def test_total_nominal_power_from_peak_power_actual(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test the plant's maximum power comes from peak_power_actual on V1.
+
+    The V1 plant endpoint has no nominalPower field, but it does report the
+    plant's nominal power in kW as peak_power_actual.
+    """
+    mock_growatt_v1_api.plant_energy_overview.return_value = {
+        "today_energy": 12.5,
+        "total_energy": 1250.0,
+        "current_power": 2500,
+        "peak_power_actual": 12,
+    }
+
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    state = hass.states.get("sensor.test_plant_total_maximum_power")
+    assert state is not None
+    assert state.state == "12000.0"
+
+
+async def test_total_output_power_falls_back_to_devices(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test plant output power is summed from the inverters when the plant reports 0.
+
+    The Growatt cloud regularly returns current_power = 0 while the inverters
+    themselves report AC output.
+    """
+    mock_growatt_v1_api.device_list.return_value = {
+        "devices": [
+            {"device_sn": "MIN123456", "type": 7},
+            {"device_sn": "MIN654321", "type": 7},
+        ]
+    }
+    mock_growatt_v1_api.plant_energy_overview.return_value = {
+        "today_energy": 12.5,
+        "total_energy": 1250.0,
+        "current_power": 0,
+    }
+    mock_growatt_v1_api.min_detail.return_value = {
+        "deviceSn": "MIN123456",
+        "pac": 745.5,
+    }
+
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    # The total coordinator does its first refresh before the devices have any
+    # data, so the fallback only has something to sum from the next poll on.
+    freezer.tick(timedelta(minutes=5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    state = hass.states.get("sensor.test_plant_total_output_power")
+    assert state is not None
+    assert state.state == "1491.0"
+
+
+async def test_solar_generation_today_derived_from_strings(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test epvToday is added up from the per-string values when absent.
+
+    tlx_last_data returns epvTotal but no epvToday, which otherwise leaves the
+    sensor unknown forever.
+    """
+    mock_growatt_v1_api.min_energy.return_value = {
+        "epvTotal": 4997.1,
+        "epv1Today": 0.5,
+        "epv2Today": 0.5,
+        "epv3Today": 0.5,
+        "epv4Today": 0.5,
+    }
+
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    state = hass.states.get("sensor.min123456_solar_energy_today")
+    assert state is not None
+    assert state.state == "2.0"
+
+
+async def test_solar_generation_today_prefers_api_value(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test a real epvToday from the API is never overwritten by the derived sum."""
+    mock_growatt_v1_api.min_energy.return_value = {
+        "epvToday": 7.5,
+        "epv1Today": 0.5,
+        "epv2Today": 0.5,
+    }
+
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    state = hass.states.get("sensor.min123456_solar_energy_today")
+    assert state is not None
+    assert state.state == "7.5"
+
+
+async def test_money_sensors_not_created_on_v1(
+    hass: HomeAssistant,
+    mock_growatt_v1_api,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test the currency sensors are skipped on V1, which has no monetary data."""
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry)
+
+    assert hass.states.get("sensor.test_plant_total_money_lifetime") is None
+    assert hass.states.get("sensor.test_plant_total_total_money_today") is None
+    # ... while the rest of the total sensors are still there
+    assert hass.states.get("sensor.test_plant_total_energy_today") is not None
+
+
+async def test_money_sensors_created_on_classic(
+    hass: HomeAssistant,
+    mock_growatt_classic_api,
+    mock_config_entry_classic: MockConfigEntry,
+) -> None:
+    """Test the currency sensors still exist on the classic API, which reports money."""
+    mock_growatt_classic_api.device_list.return_value = [
+        {"deviceSn": "TLX123456", "deviceType": "tlx"}
+    ]
+
+    with patch("homeassistant.components.growatt_server.PLATFORMS", [Platform.SENSOR]):
+        await setup_integration(hass, mock_config_entry_classic)
+
+    assert hass.states.get("sensor.test_plant_total_total_money_today") is not None

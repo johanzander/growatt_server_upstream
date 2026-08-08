@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import growattServer
+from requests import RequestException
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -33,7 +34,34 @@ type GrowattConfigEntry = ConfigEntry[GrowattRuntimeData]
 
 SCAN_INTERVAL = datetime.timedelta(minutes=5)
 
+# The Growatt cloud drops requests fairly regularly (connection resets, read
+# timeouts, the odd 502 or DNS blip). Failing the update on the very first one
+# turns every entity of the plant unavailable for a full poll cycle, so serve
+# the cached data for a couple of attempts and only give up once the failures
+# persist.
+MAX_TRANSIENT_FAILURES = 3
+
+# V1 Open API error codes that mean "you called this endpoint again too soon".
+# Each endpoint allows one call per 5 minutes; a restart landing inside that
+# window is enough to trigger it, and the next poll goes through normally.
+RATE_LIMIT_ERROR_CODES = {10011, 10012}
+
 _LOGGER = logging.getLogger(__name__)
+
+
+def _as_float(value: Any) -> float | None:
+    """Coerce an API value to float, or None when it isn't numeric.
+
+    The V1 API is inconsistent about types - the same field comes back as an
+    int, a float or a decimal string depending on the endpoint, and empty
+    strings are used for "no value".
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -81,6 +109,7 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.plant_id = plant_id
         self.previous_values: dict[str, Any] = {}
         self._pre_reset_values: dict[str, float] = {}
+        self._consecutive_failures = 0
 
         # Use the shared API instance from runtime_data (already logged in for Classic API)
         self.api = config_entry.runtime_data.api
@@ -104,15 +133,36 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # The V1 Plant APIs do not provide the same information as the classic plant_info() API
                 # More specifically:
                 # 1. There is no monetary information to be found, so today and lifetime money is not available
-                # 2. There is no nominal power, this is provided by inverter min_energy()
-                # This means, for the total coordinator we can only fetch and map the following:
+                #    (the money sensors are therefore not created at all on V1, see sensor/__init__.py)
+                # This means, for the total coordinator we fetch and map the following:
                 # todayEnergy -> today_energy
                 # totalEnergy -> total_energy
                 # invTodayPpv -> current_power
+                # nominalPower -> peak_power_actual
                 total_info = self.api.plant_energy_overview(self.plant_id)
                 total_info["todayEnergy"] = total_info["today_energy"]
                 total_info["totalEnergy"] = total_info["total_energy"]
                 total_info["invTodayPpv"] = total_info["current_power"]
+
+                # plant/data does carry the plant's nominal power, in kW, under
+                # peak_power_actual. The classic plant_info() reports nominalPower
+                # in W, which is what the sensor is declared as, so scale it.
+                # Without this the "maximum output" sensor stays unknown forever.
+                nominal_power = _as_float(total_info.get("peak_power_actual"))
+                if nominal_power is not None:
+                    total_info["nominalPower"] = nominal_power * 1000
+
+                # current_power is regularly pinned at 0 by the Growatt cloud even
+                # when the plant is demonstrably producing (verified against
+                # /v1/plant/power, which reported kW-level output for the very same
+                # minute plant/data returned 0). The per-device coordinators do get
+                # a live AC figure, so fall back to summing those - that data is
+                # already fetched, so this costs no extra call against the
+                # one-request-per-5-minutes limit.
+                if not _as_float(total_info["invTodayPpv"]):
+                    device_power = self._sum_device_output_power()
+                    if device_power is not None:
+                        total_info["invTodayPpv"] = device_power
             else:
                 # Classic API: use plant_info as before
                 total_info = self.api.plant_info(self.device_id)
@@ -125,24 +175,36 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif self.device_type == "inverter":
             self.data = self.api.inverter_detail(self.device_id)
         elif self.device_type == "min":
-            # Open API V1: min device
-            try:
-                min_details = self.api.min_detail(self.device_id)
-                min_settings = self.api.min_settings(self.device_id)
-                min_energy = self.api.min_energy(self.device_id)
-            except growattServer.GrowattV1ApiError as err:
-                raise UpdateFailed(f"Error fetching min device data: {err}") from err
+            # Open API V1: min device.
+            # GrowattV1ApiError is deliberately left to propagate: it is handled
+            # centrally in _async_update_data, which can tell a routine rate
+            # limit apart from a real API failure.
+            min_details = self.api.min_detail(self.device_id)
+            min_settings = self.api.min_settings(self.device_id)
+            min_energy = self.api.min_energy(self.device_id)
 
             min_info = {**min_details, **min_settings, **min_energy}
+
+            # tlx_last_data returns epvTotal but no epvToday, which leaves the
+            # "solar generation today" sensor unknown for the whole life of the
+            # entity. The per-string epv{1..4}Today values are present, so add
+            # the missing total up from them.
+            if min_info.get("epvToday") is None:
+                strings = [
+                    _as_float(min_info[key])
+                    for key in ("epv1Today", "epv2Today", "epv3Today", "epv4Today")
+                    if min_info.get(key) is not None
+                ]
+                if strings and None not in strings:
+                    min_info["epvToday"] = round(sum(strings), 2)
+
             self.data = min_info
             _LOGGER.debug("min_info for device %s: %r", self.device_id, min_info)
         elif self.device_type == "sph":
-            # Open API V1: SPH device (single-phase hybrid)
-            try:
-                sph_detail = self.api.sph_detail(self.device_id)
-                sph_energy = self.api.sph_energy(self.device_id)
-            except growattServer.GrowattV1ApiError as err:
-                raise UpdateFailed(f"Error fetching SPH device data: {err}") from err
+            # Open API V1: SPH device (single-phase hybrid).
+            # As for "min", GrowattV1ApiError is handled in _async_update_data.
+            sph_detail = self.api.sph_detail(self.device_id)
+            sph_energy = self.api.sph_energy(self.device_id)
 
             combined = {**sph_detail, **sph_energy}
 
@@ -222,6 +284,22 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self.data
 
+    def _sum_device_output_power(self) -> float | None:
+        """Return the plant's AC output as the sum of its inverters' `pac`.
+
+        Used as a fallback for the total coordinator when the plant endpoint
+        reports no current power. Returns None when no device has reported a
+        usable value yet - notably on the first refresh after a restart, where
+        the total coordinator runs before the device coordinators.
+        """
+        devices = getattr(self.config_entry.runtime_data, "devices", None) or {}
+        total: float | None = None
+        for coordinator in devices.values():
+            power = _as_float((coordinator.data or {}).get("pac"))
+            if power is not None:
+                total = power if total is None else total + power
+        return total
+
     async def _async_re_login(self) -> bool:
         """Attempt to re-login to the Growatt API when session expires (Classic API only).
 
@@ -280,10 +358,30 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.error("Re-login exception: %s", err)
                 return False
 
+    def _serve_cached_or_fail(self, err: Exception, reason: str) -> dict[str, Any]:
+        """Ride out a transient failure on cached data, or give up on it.
+
+        Growatt's cloud fails often enough that treating every hiccup as an
+        outage makes the entities flap; keep the previous reading for the first
+        few consecutive failures and only surface UpdateFailed once they stop
+        looking transient.
+        """
+        self._consecutive_failures += 1
+        if self.data and self._consecutive_failures < MAX_TRANSIENT_FAILURES:
+            _LOGGER.warning(
+                "%s (attempt %s/%s), keeping last known data: %s",
+                reason,
+                self._consecutive_failures,
+                MAX_TRANSIENT_FAILURES,
+                err,
+            )
+            return self.data
+        raise UpdateFailed(f"{reason}: {err}") from err
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Asynchronously update data via library."""
         try:
-            return await self.hass.async_add_executor_job(self._sync_update_data)
+            data = await self.hass.async_add_executor_job(self._sync_update_data)
         except json.decoder.JSONDecodeError as err:
             # Session expired — server returned HTML login page instead of JSON
             if self.api_version == "classic":
@@ -295,14 +393,37 @@ class GrowattCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 if await self._async_re_login():
                     try:
-                        return await self.hass.async_add_executor_job(
+                        data = await self.hass.async_add_executor_job(
                             self._sync_update_data
                         )
                     except json.decoder.JSONDecodeError as retry_err:
                         raise UpdateFailed(
                             f"Data fetch failed after re-login: {retry_err}"
                         ) from retry_err
+                    else:
+                        self._consecutive_failures = 0
+                        return data
             raise UpdateFailed(f"Error fetching data: {err}") from err
+        except growattServer.GrowattV1ApiError as err:
+            # GrowattV1ApiError is not a RequestException, so anything that does
+            # not catch it explicitly escapes the coordinator as an "Unexpected
+            # error" traceback and gets treated as a bug in the integration
+            # rather than as a retryable API failure. Rate limiting in
+            # particular is routine, not exceptional.
+            if getattr(err, "error_code", None) in RATE_LIMIT_ERROR_CODES:
+                return self._serve_cached_or_fail(
+                    err, f"Growatt API rate limit hit for {self.device_id}"
+                )
+            raise UpdateFailed(
+                f"Growatt API error fetching {self.device_id}: {err}"
+            ) from err
+        except (RequestException, TimeoutError) as err:
+            return self._serve_cached_or_fail(
+                err, f"Transient error fetching {self.device_id}"
+            )
+        else:
+            self._consecutive_failures = 0
+            return data
 
     def get_currency(self):
         """Get the currency."""

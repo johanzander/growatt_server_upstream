@@ -34,8 +34,16 @@ async def async_setup_entry(
 
     entities: list[GrowattSensor] = []
 
-    # Add total sensors
+    # Add total sensors.
+    # The V1 Open API has no monetary data anywhere in the plant endpoints, so
+    # the currency-based sensors would sit at "unknown" for the entire life of
+    # the entity. Only create them for the classic API, which does report money.
     total_coordinator = data.total_coordinator
+    total_sensor_types = [
+        description
+        for description in TOTAL_SENSOR_TYPES
+        if not (description.currency and total_coordinator.api_version == "v1")
+    ]
     entities.extend(
         GrowattSensor(
             total_coordinator,
@@ -44,7 +52,7 @@ async def async_setup_entry(
             unique_id=f"{config_entry.data['plant_id']}-{description.key}",
             description=description,
         )
-        for description in TOTAL_SENSOR_TYPES
+        for description in total_sensor_types
     )
 
     # Add sensors for each device
