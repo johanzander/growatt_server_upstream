@@ -39,6 +39,52 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 # Device types supported by the Open API V1 (type id → deviceType string)
 V1_DEVICE_TYPES: dict[int, str] = {5: "sph", 7: "min"}
 
+# Device types the Classic API can report, and how to rank them when the same
+# serial shows up more than once (see dedupe_devices).
+SUPPORTED_DEVICE_TYPES: tuple[str, ...] = (
+    "inverter",
+    "tlx",
+    "storage",
+    "mix",
+    "min",
+    "sph",
+)
+
+# Lower wins. The Classic API sometimes lists one physical unit twice under the
+# same serial — typically a live "storage" entry plus a stale "inverter" entry
+# that only reports zeros. The storage family carries the real telemetry, so it
+# must not be shadowed by the generic inverter entry.
+_DEVICE_TYPE_PRIORITY: dict[str, int] = {
+    "storage": 0,
+    "sph": 0,
+    "mix": 0,
+    "tlx": 0,
+    "min": 0,
+    "inverter": 1,
+}
+
+
+def dedupe_devices(devices: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Return one device per serial, keeping the most informative device type.
+
+    Device coordinators are keyed by serial. If the device list contains the
+    same serial twice, a plain dict comprehension silently keeps whichever
+    entry happens to come last, which can discard the live device. Ranking by
+    device type makes the outcome deterministic and keeps storage data.
+    """
+    preferred: dict[str, dict[str, str]] = {}
+    for device in devices:
+        device_type = device.get("deviceType")
+        if device_type not in SUPPORTED_DEVICE_TYPES:
+            continue
+        serial = device.get("deviceSn", "")
+        current = preferred.get(serial)
+        if current is None or _DEVICE_TYPE_PRIORITY.get(
+            device_type, 2
+        ) < _DEVICE_TYPE_PRIORITY.get(current["deviceType"], 2):
+            preferred[serial] = device
+    return list(preferred.values())
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Growatt Server component."""
@@ -315,8 +361,7 @@ async def _setup_coordinators_and_platforms(
             device["deviceType"],
             plant_id,
         )
-        for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
+        for device in dedupe_devices(devices)
     }
 
     # Perform first refresh
@@ -544,8 +589,7 @@ async def async_setup_entry(
             device["deviceType"],
             plant_id,
         )
-        for device in devices
-        if device["deviceType"] in ["inverter", "tlx", "storage", "mix", "min", "sph"]
+        for device in dedupe_devices(devices)
     }
 
     # Update runtime_data with coordinators

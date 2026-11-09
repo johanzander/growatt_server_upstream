@@ -9,6 +9,7 @@ import pytest
 import requests
 from syrupy.assertion import SnapshotAssertion
 
+from homeassistant.components.growatt_server import dedupe_devices
 from homeassistant.components.growatt_server.const import (
     AUTH_API_TOKEN,
     AUTH_PASSWORD,
@@ -406,3 +407,85 @@ async def test_v1_api_unsupported_device_type(
     assert mock_config_entry.state is ConfigEntryState.LOADED
     # Verify warning was logged for unsupported device
     assert "Device UNK999999 with type 99 not supported in Open API V1" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("devices", "expected"),
+    [
+        (
+            [
+                {"deviceSn": "SN1", "deviceType": "storage"},
+                {"deviceSn": "SN1", "deviceType": "inverter"},
+            ],
+            [("SN1", "storage")],
+        ),
+        (
+            [
+                {"deviceSn": "SN1", "deviceType": "inverter"},
+                {"deviceSn": "SN1", "deviceType": "storage"},
+            ],
+            [("SN1", "storage")],
+        ),
+        (
+            [
+                {"deviceSn": "SN1", "deviceType": "inverter"},
+                {"deviceSn": "SN2", "deviceType": "inverter"},
+            ],
+            [("SN1", "inverter"), ("SN2", "inverter")],
+        ),
+        (
+            [
+                {"deviceSn": "SN1", "deviceType": "unsupported"},
+                {"deviceSn": "SN2", "deviceType": "sph"},
+            ],
+            [("SN2", "sph")],
+        ),
+    ],
+    ids=[
+        "storage_then_inverter",
+        "inverter_then_storage",
+        "distinct_serials",
+        "unsupported_type_dropped",
+    ],
+)
+def test_dedupe_devices(
+    devices: list[dict[str, str]], expected: list[tuple[str, str]]
+) -> None:
+    """Test one device per serial survives, preferring the informative type."""
+    result = dedupe_devices(devices)
+    assert [(d["deviceSn"], d["deviceType"]) for d in result] == expected
+
+
+async def test_duplicate_serial_keeps_storage_device(
+    hass: HomeAssistant,
+    mock_growatt_classic_api,
+    mock_config_entry_classic: MockConfigEntry,
+) -> None:
+    """Test a serial listed as both storage and inverter keeps the storage device.
+
+    The Classic API can list one physical unit twice under the same serial. The
+    inverter entry is frequently stale and only reports zeros, so the storage
+    entry must not be overwritten by it — that is what made battery entities
+    disappear from Home Assistant.
+    """
+    mock_growatt_classic_api.device_list.return_value = [
+        {"deviceSn": "KTH1BLB007", "deviceType": "storage"},
+        {"deviceSn": "KTH1BLB007", "deviceType": "inverter"},
+    ]
+    mock_growatt_classic_api.storage_params.return_value = {
+        "storageDetailBean": {"capacity": 75, "vBat": 48},
+    }
+    mock_growatt_classic_api.storage_energy_overview.return_value = {
+        "eChargeToday": 3.1,
+    }
+
+    await setup_integration(hass, mock_config_entry_classic)
+
+    assert mock_config_entry_classic.state is ConfigEntryState.LOADED
+
+    devices = mock_config_entry_classic.runtime_data.devices
+    assert list(devices) == ["KTH1BLB007"]
+    assert devices["KTH1BLB007"].device_type == "storage"
+
+    mock_growatt_classic_api.storage_params.assert_called_once()
+    mock_growatt_classic_api.inverter_detail.assert_not_called()
